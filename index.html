@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>투어라이브 프로덕트 대시보드</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<style>
+:root {
+  --bg:#0f1117; --sidebar:#13161f; --card:#1a1d27; --card2:#1e2130; --border:#2a2d3e;
+  --text:#e2e8f0; --muted:#94a3b8; --muted2:#64748b;
+  --blue:#3b82f6; --indigo:#6366f1; --green:#10b981;
+  --yellow:#f59e0b; --red:#f43f5e;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,'Pretendard','Noto Sans KR',sans-serif;display:flex;height:100vh;overflow:hidden;}
+
+/* ── 사이드바 ── */
+#sidebar{width:256px;min-width:256px;background:var(--sidebar);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;}
+#sidebar-header{padding:18px 16px 12px;border-bottom:1px solid var(--border);}
+#sidebar-header .logo{font-size:14px;font-weight:700;}
+#sidebar-header .sub{font-size:10px;color:var(--muted2);margin-top:2px;}
+#run-list{flex:1;overflow-y:auto;padding:8px 0;}
+.run-item{padding:10px 16px;cursor:pointer;border-left:3px solid transparent;transition:all .15s;}
+.run-item:hover{background:var(--card2);}
+.run-item.active{background:var(--card2);border-left-color:var(--blue);}
+.run-date{font-size:12px;font-weight:600;}
+.run-label{font-size:11px;color:var(--muted);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.run-badges{display:flex;gap:4px;margin-top:5px;flex-wrap:wrap;}
+.rbadge{font-size:10px;padding:1px 6px;border-radius:9999px;}
+.rbadge.crit{background:#f43f5e22;color:#f43f5e;}
+.rbadge.warn{background:#f59e0b22;color:#f59e0b;}
+.rbadge.ok{background:#10b98122;color:#10b981;}
+#upload-zone-btn{padding:12px 14px;border-top:1px solid var(--border);}
+#open-upload-btn{width:100%;padding:9px;border-radius:8px;background:var(--blue);color:#fff;font-size:12px;font-weight:600;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;}
+#open-upload-btn:hover{background:#2563eb;}
+
+/* ── 메인 ── */
+#main{flex:1;overflow-y:auto;padding:22px 26px;}
+.page-header{margin-bottom:18px;}
+.page-header h1{font-size:19px;font-weight:700;}
+.page-header .subtitle{color:var(--muted);font-size:11px;margin-top:3px;}
+
+/* ── 업로드 모달 ── */
+#upload-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:100;align-items:center;justify-content:center;}
+#upload-modal.open{display:flex;}
+#upload-box{background:var(--card);border:1px solid var(--border);border-radius:14px;width:560px;max-width:95vw;padding:28px;position:relative;}
+#upload-box h2{font-size:16px;font-weight:700;margin-bottom:6px;}
+#upload-box .udesc{font-size:12px;color:var(--muted);margin-bottom:20px;}
+.close-btn{position:absolute;top:16px;right:18px;background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer;line-height:1;}
+.close-btn:hover{color:var(--text);}
+
+.file-slots{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:18px;}
+.file-slot{border:2px dashed var(--border);border-radius:10px;padding:16px;text-align:center;cursor:pointer;transition:all .2s;position:relative;}
+.file-slot:hover,.file-slot.dragover{border-color:var(--blue);background:#3b82f610;}
+.file-slot.filled{border-color:var(--green);border-style:solid;background:#10b98110;}
+.file-slot input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%;}
+.file-slot .slot-icon{font-size:24px;margin-bottom:6px;}
+.file-slot .slot-label{font-size:11px;font-weight:600;color:var(--muted);margin-bottom:3px;}
+.file-slot .slot-name{font-size:10px;color:var(--green);margin-top:4px;word-break:break-all;}
+.file-slot .slot-hint{font-size:10px;color:var(--muted2);}
+
+.label-input{width:100%;background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:9px 12px;color:var(--text);font-size:12px;margin-bottom:14px;outline:none;}
+.label-input:focus{border-color:var(--blue);}
+.label-input::placeholder{color:var(--muted2);}
+
+#analyze-btn{width:100%;padding:11px;border-radius:8px;background:var(--blue);color:#fff;font-size:13px;font-weight:700;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:background .2s;}
+#analyze-btn:hover:not(:disabled){background:#2563eb;}
+#analyze-btn:disabled{background:var(--border);color:var(--muted);cursor:not-allowed;}
+
+/* 업로드 진행 */
+#upload-progress{display:none;margin-top:14px;}
+.progress-step{display:flex;align-items:center;gap:8px;font-size:12px;padding:4px 0;color:var(--muted);}
+.progress-step.done{color:var(--green);}
+.progress-step.active{color:var(--text);}
+.picon{width:16px;text-align:center;}
+
+/* ── 알림 배너 ── */
+.alert-banner{background:#f43f5e18;border:1px solid #f43f5e44;border-left:4px solid var(--red);border-radius:10px;padding:12px 16px;margin-bottom:18px;}
+.alert-banner .atitle{font-size:12px;font-weight:700;color:var(--red);margin-bottom:3px;}
+.alert-banner .abody{font-size:11px;color:#fca5a5;line-height:1.7;}
+.alert-banner code{background:#f43f5e22;padding:1px 4px;border-radius:3px;font-size:10px;}
+
+/* ── KPI ── */
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:12px;margin-bottom:18px;}
+.kpi-card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px 16px;}
+.kpi-card .label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;}
+.kpi-card .value{font-size:24px;font-weight:700;}
+.kpi-card .delta{font-size:10px;margin-top:3px;}
+.delta.up{color:var(--green);} .delta.down{color:var(--red);} .delta.neu{color:var(--muted);}
+.kpi-card.c-blue  {border-top:3px solid var(--blue);}
+.kpi-card.c-red   {border-top:3px solid var(--red);}
+.kpi-card.c-green {border-top:3px solid var(--green);}
+.kpi-card.c-yellow{border-top:3px solid var(--yellow);}
+.kpi-card.c-indigo{border-top:3px solid var(--indigo);}
+
+/* ── 차트 ── */
+.row-full{margin-bottom:14px;}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;}
+.row3{display:grid;grid-template-columns:2fr 1fr 1fr;gap:14px;margin-bottom:14px;}
+.chart-card,.issue-card,.table-card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px;}
+.chart-card h3,.issue-card h3,.table-card h3{font-size:12px;font-weight:600;margin-bottom:11px;}
+.chart-card canvas{max-height:190px;}
+
+/* ── 이슈 ── */
+.issue-item{display:flex;gap:10px;padding:9px 0;border-bottom:1px solid var(--border);font-size:12px;}
+.issue-item:last-child{border-bottom:none;padding-bottom:0;}
+.badge{display:inline-flex;align-items:center;padding:2px 7px;border-radius:9999px;font-size:10px;font-weight:600;white-space:nowrap;}
+.badge.crit{background:#f43f5e22;color:var(--red);}
+.badge.warn{background:#f59e0b22;color:var(--yellow);}
+.badge.info{background:#3b82f622;color:var(--blue);}
+.issue-detail{font-size:11px;color:var(--muted);margin-top:2px;line-height:1.6;}
+
+/* ── 테이블 ── */
+table{width:100%;border-collapse:collapse;font-size:12px;}
+th{text-align:left;color:var(--muted);font-weight:500;padding:5px 6px;border-bottom:1px solid var(--border);font-size:10px;text-transform:uppercase;}
+td{padding:7px 6px;border-bottom:1px solid var(--border);}
+tr:last-child td{border-bottom:none;}
+
+/* ── 빈/로딩 상태 ── */
+.center-state{display:flex;flex-direction:column;align-items:center;justify-content:center;height:60vh;color:var(--muted);gap:12px;text-align:center;}
+.spinner{width:18px;height:18px;border:2px solid var(--border);border-top-color:var(--blue);border-radius:50%;animation:spin .7s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+.empty-icon{font-size:40px;margin-bottom:4px;}
+
+footer{text-align:center;color:var(--muted2);font-size:10px;margin-top:20px;padding-bottom:14px;}
+</style>
+</head>
+<body>
+
+<!-- 사이드바 -->
+<div id="sidebar">
+  <div id="sidebar-header">
+    <div class="logo">🌏 투어라이브 대시보드</div>
+    <div class="sub">분석 히스토리</div>
+  </div>
+  <div id="run-list">
+    <div style="padding:16px;text-align:center;color:var(--muted2);font-size:11px;">
+      <div class="spinner" style="margin:0 auto 8px;"></div>로딩 중…
+    </div>
+  </div>
+  <div id="upload-zone-btn">
+    <button id="open-upload-btn" onclick="openUpload()">＋ CSV 업로드 &amp; 분석</button>
+  </div>
+</div>
+
+<!-- 메인 -->
+<div id="main">
+  <div id="empty-state" class="center-state">
+    <div class="empty-icon">📊</div>
+    <div style="font-size:14px;font-weight:600;">히스토리를 선택하거나</div>
+    <div style="font-size:12px;">CSV를 업로드해서 분석을 시작하세요</div>
+    <button onclick="openUpload()" style="margin-top:8px;padding:9px 18px;background:var(--blue);color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;">＋ CSV 업로드</button>
+  </div>
+  <div id="content" style="display:none;"></div>
+</div>
+
+<!-- 업로드 모달 -->
+<div id="upload-modal">
+  <div id="upload-box">
+    <button class="close-btn" onclick="closeUpload()">✕</button>
+    <h2>📂 CSV 업로드 &amp; 분석</h2>
+    <div class="udesc">Mixpanel에서 내보낸 CSV 2개를 올리면 자동 분석 후 Supabase에 저장됩니다.</div>
+
+    <div class="file-slots">
+      <!-- Active Users -->
+      <div class="file-slot" id="slot-au" ondragover="onDragOver(event,'au')" ondragleave="onDragLeave('au')" ondrop="onDrop(event,'au')">
+        <input type="file" accept=".csv" onchange="onFileSelect(event,'au')"/>
+        <div class="slot-icon">📈</div>
+        <div class="slot-label">Active Users CSV</div>
+        <div class="slot-hint">Insights → 시간별 DAU 내보내기</div>
+        <div class="slot-name" id="au-name"></div>
+      </div>
+      <!-- Events Export -->
+      <div class="file-slot" id="slot-ev" ondragover="onDragOver(event,'ev')" ondragleave="onDragLeave('ev')" ondrop="onDrop(event,'ev')">
+        <input type="file" accept=".csv" onchange="onFileSelect(event,'ev')"/>
+        <div class="slot-icon">📋</div>
+        <div class="slot-label">Events Export CSV</div>
+        <div class="slot-hint">Events → Export → Raw events</div>
+        <div class="slot-name" id="ev-name"></div>
+      </div>
+    </div>
+
+    <input class="label-input" id="run-label" type="text" placeholder="메모 (선택) — 예: 3월 5주차 분석"/>
+    <button id="analyze-btn" disabled onclick="runAnalysis()">
+      <span id="analyze-btn-text">CSV를 모두 올려주세요</span>
+    </button>
+
+    <div id="upload-progress">
+      <div class="progress-step" id="step1"><span class="picon">○</span> CSV 파싱 중…</div>
+      <div class="progress-step" id="step2"><span class="picon">○</span> 이슈 감지 중…</div>
+      <div class="progress-step" id="step3"><span class="picon">○</span> Supabase에 저장 중…</div>
+      <div class="progress-step" id="step4"><span class="picon">○</span> 완료</div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Supabase ─────────────────────────────────────────────────────────
+const SB_URL = 'https://udbslvrmlqtcltpnkenw.supabase.co';
+const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVkYnNsdnJtbHF0Y2x0cG5rZW53Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ3ODM0MDEsImV4cCI6MjA5MDM1OTQwMX0.ALYRcSaSvi2udbR1J2EwltgDe2Qh0kLqJz4MUkyaRAY';
+const H = { 'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'return=representation' };
+
+async function sbGet(path) {
+  const r = await fetch(`${SB_URL}/rest/v1/${path}`, { headers: H });
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+async function sbPost(table, rows) {
+  const r = await fetch(`${SB_URL}/rest/v1/${table}`, { method: 'POST', headers: H, body: JSON.stringify(rows) });
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+
+// ── 파일 상태 ────────────────────────────────────────────────────────
+let files = { au: null, ev: null };
+
+function onDragOver(e, slot) { e.preventDefault(); document.getElementById(`slot-${slot}`).classList.add('dragover'); }
+function onDragLeave(slot) { document.getElementById(`slot-${slot}`).classList.remove('dragover'); }
+function onDrop(e, slot) {
+  e.preventDefault();
+  onDragLeave(slot);
+  const f = e.dataTransfer.files[0];
+  if (f) setFile(slot, f);
+}
+function onFileSelect(e, slot) { setFile(slot, e.target.files[0]); }
+function setFile(slot, f) {
+  files[slot] = f;
+  const el = document.getElementById(`slot-${slot}`);
+  el.classList.add('filled');
+  document.getElementById(`${slot}-name`).textContent = f.name;
+  checkReady();
+}
+function checkReady() {
+  const ready = files.au && files.ev;
+  document.getElementById('analyze-btn').disabled = !ready;
+  document.getElementById('analyze-btn-text').textContent = ready ? '🔍 분석 후 Supabase 저장' : 'CSV를 모두 올려주세요';
+}
+
+// ── CSV 파싱 ─────────────────────────────────────────────────────────
+function parseCSV(file) {
+  return new Promise((res, rej) => {
+    Papa.parse(file, {
+      header: true, skipEmptyLines: true,
+      complete: r => res(r), error: e => rej(e),
+    });
+  });
+}
+
+function parseActiveUsers(data) {
+  /* Active Users: Date | Metric | prev_col | today_col */
+  const headers = data.meta.fields;
+  const prevLabel  = headers[2];
+  const todayLabel = headers[3];
+  const today = {}, prev = {};
+  data.data.forEach(row => {
+    const dt = row['Date'] || row[headers[0]] || '';
+    if (!dt) return;
+    const hour = parseInt(dt.substring(11, 13));
+    today[hour] = parseInt(row[headers[3]]) || 0;
+    prev[hour]  = parseInt(row[headers[2]]) || 0;
+  });
+  // 날짜 파싱
+  const parseDateLabel = (s) => {
+    try { return new Date(s.split(',')[0]).toISOString().slice(0, 10); }
+    catch { return new Date().toISOString().slice(0, 10); }
+  };
+  return {
+    today, prev,
+    dateToday: parseDateLabel(todayLabel),
+    datePrev:  parseDateLabel(prevLabel),
+  };
+}
+
+function parseEvents(data) {
+  const eventCounts  = {};
+  const tourViews    = {};
+  const tourNames    = {};
+  const tourPrices   = {};
+  const platformCnt  = {};
+  const countryCnt   = {};
+  const countryNames = {};
+  const loginPerUser = {};
+  const userEvents   = {};
+  let total = 0;
+
+  data.data.forEach(row => {
+    total++;
+    const event = (row['Event Name'] || '').trim();
+    const did   = row['Distinct ID'] || '';
+    eventCounts[event] = (eventCounts[event] || 0) + 1;
+
+    // 플랫폼
+    const lib = row['Mixpanel Library'] || '';
+    const plat = lib === 'flutter' ? (row['Operating System'] || 'Unknown') : 'web';
+    platformCnt[plat] = (platformCnt[plat] || 0) + 1;
+
+    // 국가
+    const cc = row['Country'] || row['country_name'] || '';
+    if (cc) {
+      countryCnt[cc] = (countryCnt[cc] || 0) + 1;
+      countryNames[cc] = row['country_name'] || cc;
+    }
+
+    // 투어 조회
+    if (event === 'PageView_Tour') {
+      const tid = row['tour_id'] || row['Tour_id'] || '';
+      if (tid) {
+        tourViews[tid] = (tourViews[tid] || 0) + 1;
+        if (row['tour_name'] || row['Tour_name']) tourNames[tid] = row['tour_name'] || row['Tour_name'];
+        const p = parseFloat(row['price']);
+        if (!isNaN(p)) tourPrices[tid] = p;
+      }
+    }
+
+    // 로그인 루프 감지용
+    if (event === 'PageView_Login') loginPerUser[did] = (loginPerUser[did] || 0) + 1;
+
+    if (!userEvents[did]) userEvents[did] = [];
+    userEvents[did].push({ event, time: parseFloat(row['Time'] || 0) });
+  });
+
+  return { total, eventCounts, tourViews, tourNames, tourPrices, platformCnt, countryCnt, countryNames, loginPerUser, userEvents, uniqueUsers: Object.keys(userEvents).length };
+}
+
+// ── 이슈 감지 ────────────────────────────────────────────────────────
+function detectIssues(ev, dauToday, dauPrev) {
+  const issues = [];
+  const todaySum = Object.values(dauToday).reduce((a,b)=>a+b,0);
+  const prevSum  = Object.values(dauPrev).reduce((a,b)=>a+b,0);
+
+  // 1. 로그인 루프
+  Object.entries(ev.loginPerUser).forEach(([uid, cnt]) => {
+    if (cnt < 10) return;
+    const uEvts = (ev.userEvents[uid] || []).sort((a,b)=>a.time-b.time);
+    const span = uEvts.length > 1 ? uEvts[uEvts.length-1].time - uEvts[0].time : 0;
+    const pre = uEvts.filter(e=>e.event!=='PageView_Login').slice(0,3).map(e=>e.event);
+    issues.push({
+      severity: 'critical', issue_type: 'login_loop',
+      title: `PageView_Login 루프 버그 — 유저 #${uid}`,
+      description: `유저 #${uid}가 ${span.toFixed(0)}초 내 PageView_Login을 ${cnt}회 발화. 직전: ${pre.join(' → ') || '없음'}. 세션 만료 시 Flutter rebuild 루프 추정.`,
+      affected_user_id: String(uid),
+      metadata: JSON.stringify({ event_count: cnt, time_span_sec: +span.toFixed(1), preceding_events: pre }),
+    });
+  });
+
+  // 2. DAU 하락
+  if (prevSum > 0) {
+    const dropPct = (todaySum - prevSum) / prevSum * 100;
+    if (dropPct < -10) {
+      issues.push({ severity:'critical', issue_type:'dau_drop', title:`DAU 전일 대비 ${Math.abs(dropPct).toFixed(1)}% 급락`,
+        description:`오늘 ${todaySum.toLocaleString()}명 vs 전일 ${prevSum.toLocaleString()}명. 즉각 원인 파악 필요.`, affected_user_id:null,
+        metadata: JSON.stringify({ today:todaySum, yesterday:prevSum, drop_pct:+dropPct.toFixed(1) }) });
+    } else if (dropPct < 0) {
+      issues.push({ severity:'warning', issue_type:'dau_drop', title:`DAU 전일 대비 ${Math.abs(dropPct).toFixed(1)}% 하락`,
+        description:`오늘 ${todaySum.toLocaleString()}명 vs 전일 ${prevSum.toLocaleString()}명. 지속 모니터링 필요.`, affected_user_id:null,
+        metadata: JSON.stringify({ today:todaySum, yesterday:prevSum, drop_pct:+dropPct.toFixed(1) }) });
+    }
+  }
+
+  // 3. 이벤트 노이즈
+  const loginCnt = ev.eventCounts['PageView_Login'] || 0;
+  if (ev.total > 0 && loginCnt / ev.total > 0.5) {
+    issues.push({ severity:'warning', issue_type:'event_noise', title:`이벤트 노이즈 ${(loginCnt/ev.total*100).toFixed(0)}% (PageView_Login 과다)`,
+      description:`전체 ${ev.total}건 중 PageView_Login ${loginCnt}건. 루프 버그로 인한 노이즈로 분석 신뢰도 저하.`, affected_user_id:null,
+      metadata: JSON.stringify({ total:ev.total, login_count:loginCnt }) });
+  }
+
+  // 4. 해외 유저
+  const total = Object.values(ev.countryCnt).reduce((a,b)=>a+b,0);
+  const krCnt = ev.countryCnt['KR'] || 0;
+  const overseasPct = total > 0 ? (1 - krCnt/total)*100 : 0;
+  if (overseasPct > 10) {
+    const overseas = Object.entries(ev.countryCnt).filter(([k])=>k!=='KR').sort((a,b)=>b[1]-a[1]).slice(0,3);
+    issues.push({ severity:'info', issue_type:'overseas_users', title:`해외 유저 ${overseasPct.toFixed(0)}%`,
+      description:`${overseas.map(([k,v])=>`${ev.countryNames[k]||k} ${v}건`).join(', ')}. 해외 유저 예약 전환율 별도 추적 권장.`, affected_user_id:null,
+      metadata: JSON.stringify(ev.countryCnt) });
+  }
+
+  return issues;
+}
+
+// ── 분석 + Supabase 저장 ─────────────────────────────────────────────
+async function runAnalysis() {
+  const btn = document.getElementById('analyze-btn');
+  btn.disabled = true;
+  document.getElementById('upload-progress').style.display = 'block';
+
+  const setStep = (n, state) => {
+    const el = document.getElementById(`step${n}`);
+    el.className = `progress-step ${state}`;
+    el.querySelector('.picon').textContent = state==='done' ? '✅' : state==='active' ? '⏳' : '○';
+  };
+
+  try {
+    // Step 1: CSV 파싱
+    setStep(1,'active');
+    const [auData, evData] = await Promise.all([parseCSV(files.au), parseCSV(files.ev)]);
+    const au = parseActiveUsers(auData);
+    const ev = parseEvents(evData);
+    setStep(1,'done');
+
+    // Step 2: 이슈 감지
+    setStep(2,'active');
+    const issues = detectIssues(ev, au.today, au.prev);
+    setStep(2,'done');
+
+    // Step 3: Supabase 저장
+    setStep(3,'active');
+    const label = document.getElementById('run-label').value.trim() || `${au.dateToday} Mixpanel CSV 업로드`;
+
+    // run 생성
+    const runRes = await sbPost('analysis_runs', [{
+      date_from: au.dateToday, date_to: au.dateToday, label,
+      total_events: ev.total, unique_users: ev.uniqueUsers,
+      notes: `이슈 ${issues.length}건 감지`,
+    }]);
+    const runId = runRes[0].id;
+
+    // DAU hourly
+    const dauRows = Array.from({length:24},(_,h)=>({ run_id:runId, hour:h, today_count:au.today[h]||0, prev_count:au.prev[h]||0 }));
+    await sbPost('dau_hourly', dauRows);
+
+    // event stats
+    const evtRows = Object.entries(ev.eventCounts).map(([name,count])=>({ run_id:runId, event_name:name, count }));
+    if (evtRows.length) await sbPost('event_stats', evtRows);
+
+    // platform
+    const platRows = Object.entries(ev.platformCnt).map(([platform,count])=>({ run_id:runId, platform, count }));
+    if (platRows.length) await sbPost('platform_stats', platRows);
+
+    // country
+    const ctryRows = Object.entries(ev.countryCnt).map(([code,count])=>({ run_id:runId, country_code:code, country_name:ev.countryNames[code]||code, count }));
+    if (ctryRows.length) await sbPost('country_stats', ctryRows);
+
+    // tours
+    const tourRows = Object.entries(ev.tourViews).map(([tid,vc])=>({ run_id:runId, tour_id:tid, tour_name:ev.tourNames[tid]||null, view_count:vc, price:ev.tourPrices[tid]||null }));
+    if (tourRows.length) await sbPost('tour_view_stats', tourRows);
+
+    // issues
+    const issueRows = issues.map(i=>({ ...i, run_id:runId }));
+    if (issueRows.length) await sbPost('detected_issues', issueRows);
+
+    setStep(3,'done');
+
+    // Step 4: 완료
+    setStep(4,'done');
+    document.getElementById('step4').querySelector('.picon').textContent = '🎉';
+
+    // 0.8초 후 닫고 히스토리 새로고침
+    setTimeout(async () => {
+      closeUpload();
+      resetUpload();
+      await loadHistory();
+      // 방금 만든 run 자동 선택
+      const firstItem = document.querySelector('.run-item');
+      if (firstItem) firstItem.click();
+    }, 900);
+
+  } catch(e) {
+    alert('오류가 발생했습니다:\n' + e.message);
+    btn.disabled = false;
+  }
+}
+
+function resetUpload() {
+  files = { au:null, ev:null };
+  ['au','ev'].forEach(s => {
+    document.getElementById(`slot-${s}`).classList.remove('filled');
+    document.getElementById(`${s}-name`).textContent = '';
+  });
+  document.getElementById('run-label').value = '';
+  document.getElementById('upload-progress').style.display = 'none';
+  ['step1','step2','step3','step4'].forEach(id => {
+    const el = document.getElementById(id);
+    el.className = 'progress-step';
+    el.querySelector('.picon').textContent = '○';
+  });
+  checkReady();
+}
+
+// ── 모달 제어 ────────────────────────────────────────────────────────
+function openUpload() { document.getElementById('upload-modal').classList.add('open'); }
+function closeUpload() { document.getElementById('upload-modal').classList.remove('open'); }
+document.getElementById('upload-modal').addEventListener('click', e => { if(e.target.id==='upload-modal') closeUpload(); });
+
+// ── 히스토리 사이드바 ─────────────────────────────────────────────────
+async function loadHistory() {
+  const [runs, issues] = await Promise.all([
+    sbGet('analysis_runs?select=id,created_at,date_from,date_to,label,total_events,unique_users&order=created_at.desc'),
+    sbGet('detected_issues?select=run_id,severity'),
+  ]);
+  const issueMap = {};
+  issues.forEach(i => {
+    if (!issueMap[i.run_id]) issueMap[i.run_id] = {c:0,w:0};
+    if (i.severity==='critical') issueMap[i.run_id].c++;
+    if (i.severity==='warning')  issueMap[i.run_id].w++;
+  });
+  const list = document.getElementById('run-list');
+  list.innerHTML = '';
+  if (!runs.length) {
+    list.innerHTML = '<div style="padding:16px;text-align:center;color:var(--muted2);font-size:11px;">아직 분석 없음<br>CSV를 업로드하세요</div>';
+    return;
+  }
+  runs.forEach((r,i) => {
+    const im = issueMap[r.id]||{c:0,w:0};
+    const badges = [
+      im.c ? `<span class="rbadge crit">🚨 ${im.c}</span>` : '',
+      im.w ? `<span class="rbadge warn">⚠️ ${im.w}</span>` : '',
+      (!im.c&&!im.w) ? `<span class="rbadge ok">✅</span>` : '',
+    ].join('');
+    const timeStr = new Date(r.created_at).toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'});
+    const el = document.createElement('div');
+    el.className = 'run-item' + (i===0?' active':'');
+    el.dataset.id = r.id;
+    el.innerHTML = `
+      <div class="run-date">${r.date_from} <span style="color:var(--muted2);font-weight:400;font-size:10px;">${timeStr}</span></div>
+      <div class="run-label">${r.label||'분석'}</div>
+      <div class="run-badges">${badges}</div>`;
+    el.onclick = () => {
+      document.querySelectorAll('.run-item').forEach(e=>e.classList.remove('active'));
+      el.classList.add('active');
+      loadRun(r.id, r);
+    };
+    list.appendChild(el);
+  });
+  if (runs.length) loadRun(runs[0].id, runs[0]);
+}
+
+// ── 차트 관리 ─────────────────────────────────────────────────────────
+let charts = [];
+function clearCharts() { charts.forEach(c=>c.destroy()); charts=[]; }
+
+// ── 특정 run 렌더 ─────────────────────────────────────────────────────
+async function loadRun(runId, meta) {
+  document.getElementById('empty-state').style.display = 'none';
+  document.getElementById('content').style.display = 'none';
+  clearCharts();
+
+  const [dau,evts,plat,ctry,tours,issues] = await Promise.all([
+    sbGet(`dau_hourly?run_id=eq.${runId}&order=hour.asc`),
+    sbGet(`event_stats?run_id=eq.${runId}&order=count.desc`),
+    sbGet(`platform_stats?run_id=eq.${runId}&order=count.desc`),
+    sbGet(`country_stats?run_id=eq.${runId}&order=count.desc`),
+    sbGet(`tour_view_stats?run_id=eq.${runId}&order=view_count.desc`),
+    sbGet(`detected_issues?run_id=eq.${runId}&order=created_at.asc`),
+  ]);
+
+  const todaySum = dau.reduce((s,r)=>s+r.today_count,0);
+  const prevSum  = dau.reduce((s,r)=>s+r.prev_count,0);
+  const dauDelta = prevSum ? ((todaySum-prevSum)/prevSum*100).toFixed(1) : 0;
+  const crits = issues.filter(i=>i.severity==='critical');
+  const warns = issues.filter(i=>i.severity==='warning');
+  const loginEvt = evts.find(e=>e.event_name==='PageView_Login');
+  const noiseRate = loginEvt && meta.total_events ? Math.round(loginEvt.count/meta.total_events*100) : 0;
+
+  const critBanner = crits.length ? `
+    <div class="alert-banner">
+      <div class="atitle">🚨 긴급 이슈 ${crits.length}건</div>
+      <div class="abody">${crits.map(i=>`<strong>${i.title}</strong><br>${i.description}`).join('<br><br>')}</div>
+    </div>` : '';
+
+  document.getElementById('content').innerHTML = `
+    <div class="page-header">
+      <h1>📊 ${meta.label||meta.date_from}</h1>
+      <div class="subtitle">기준일: ${meta.date_from} &nbsp;|&nbsp; 이벤트 ${meta.total_events||0}건 · 유저 ${meta.unique_users||0}명</div>
+    </div>
+    ${critBanner}
+    <div class="kpi-grid">
+      <div class="kpi-card c-blue">
+        <div class="label">오늘 DAU 합계</div>
+        <div class="value">${todaySum.toLocaleString()}</div>
+        <div class="delta ${dauDelta>=0?'up':'down'}">${dauDelta>=0?'▲':'▼'} ${Math.abs(dauDelta)}% vs 전일 (${prevSum.toLocaleString()}명)</div>
+      </div>
+      <div class="kpi-card c-red">
+        <div class="label">이벤트 노이즈</div>
+        <div class="value">${noiseRate}%</div>
+        <div class="delta down">PageView_Login ${loginEvt?loginEvt.count:0}건</div>
+      </div>
+      <div class="kpi-card c-indigo">
+        <div class="label">유니크 유저</div>
+        <div class="value">${meta.unique_users||0}</div>
+        <div class="delta neu">${plat.map(p=>`${p.platform} ${p.count}%`).join(' · ')}</div>
+      </div>
+      <div class="kpi-card c-yellow">
+        <div class="label">감지된 이슈</div>
+        <div class="value">${issues.length}</div>
+        <div class="delta down">긴급 ${crits.length} · 주의 ${warns.length}</div>
+      </div>
+      <div class="kpi-card c-green">
+        <div class="label">투어 조회 수</div>
+        <div class="value">${tours.reduce((s,t)=>s+t.view_count,0)}</div>
+        <div class="delta neu">${tours.length}개 투어</div>
+      </div>
+    </div>
+    <div class="row-full">
+      <div class="chart-card">
+        <h3>📈 시간별 활성 사용자 — 오늘 vs 전일</h3>
+        <canvas id="cDau" style="max-height:170px;"></canvas>
+      </div>
+    </div>
+    <div class="row3">
+      <div class="chart-card"><h3>📊 이벤트 타입 분포</h3><canvas id="cEvt"></canvas></div>
+      <div class="chart-card"><h3>📱 플랫폼</h3><canvas id="cPlat"></canvas></div>
+      <div class="chart-card"><h3>🌍 국가</h3><canvas id="cCtry"></canvas></div>
+    </div>
+    <div class="row2">
+      <div class="issue-card">
+        <h3>🔍 감지된 이슈 (${issues.length}건)</h3>
+        ${issues.length ? issues.map(i=>`
+          <div class="issue-item">
+            <span class="badge ${i.severity==='critical'?'crit':i.severity==='warning'?'warn':'info'}">
+              ${i.severity==='critical'?'🚨 긴급':i.severity==='warning'?'⚠️ 주의':'ℹ️ 정보'}
+            </span>
+            <div>
+              <div style="font-weight:600;font-size:12px;">${i.title}</div>
+              <div class="issue-detail">${i.description||''}</div>
+              ${i.affected_user_id?`<div class="issue-detail">영향 유저: <code style="background:var(--card2);padding:1px 4px;border-radius:3px;">#${i.affected_user_id}</code></div>`:''}
+            </div>
+          </div>`).join('') : '<div style="color:var(--muted);font-size:12px;padding:8px 0;">감지된 이슈 없음 ✅</div>'}
+      </div>
+      <div class="table-card">
+        <h3>🗺 조회된 투어</h3>
+        <table>
+          <thead><tr><th>투어명</th><th>조회</th><th>가격</th></tr></thead>
+          <tbody>${tours.length ? tours.map(t=>`
+            <tr>
+              <td><span style="color:var(--muted);font-size:10px;">#${t.tour_id}</span><br>${t.tour_name||'-'}</td>
+              <td><strong>${t.view_count}</strong></td>
+              <td>${t.price?t.price.toLocaleString()+'원':'-'}</td>
+            </tr>`).join('') : '<tr><td colspan="3" style="color:var(--muted);text-align:center;">데이터 없음</td></tr>'}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <footer>투어라이브 대시보드 · Supabase · ${new Date(meta.created_at).toLocaleString('ko-KR')}</footer>
+  `;
+  document.getElementById('content').style.display = 'block';
+
+  const gc='rgba(255,255,255,0.06)';
+  const sc={x:{ticks:{color:'#94a3b8',font:{size:10}},grid:{color:gc}},y:{ticks:{color:'#94a3b8',font:{size:10}},grid:{color:gc}}};
+
+  charts.push(new Chart(document.getElementById('cDau'),{
+    type:'line',
+    data:{
+      labels:dau.map(r=>String(r.hour).padStart(2,'0')+':00'),
+      datasets:[
+        {label:'오늘',data:dau.map(r=>r.today_count),borderColor:'#3b82f6',backgroundColor:'rgba(59,130,246,0.10)',fill:true,tension:0.4,pointRadius:3},
+        {label:'전일',data:dau.map(r=>r.prev_count),borderColor:'#64748b',backgroundColor:'rgba(100,116,139,0.04)',fill:true,tension:0.4,pointRadius:2,borderDash:[4,4]},
+      ]
+    },
+    options:{responsive:true,plugins:{legend:{labels:{color:'#94a3b8',font:{size:11}}}},scales:sc}
+  }));
+
+  const topEvts=evts.slice(0,7);
+  const colors=['#f43f5e','#3b82f6','#6366f1','#10b981','#f59e0b','#8b5cf6','#94a3b8'];
+  charts.push(new Chart(document.getElementById('cEvt'),{
+    type:'bar',
+    data:{labels:topEvts.map(e=>e.event_name),datasets:[{data:topEvts.map(e=>e.count),backgroundColor:colors,borderRadius:4}]},
+    options:{indexAxis:'y',responsive:true,plugins:{legend:{display:false}},scales:sc}
+  }));
+
+  charts.push(new Chart(document.getElementById('cPlat'),{
+    type:'doughnut',
+    data:{labels:plat.map(p=>p.platform),datasets:[{data:plat.map(p=>p.count),backgroundColor:['#3b82f6','#6366f1','#10b981'],borderWidth:0}]},
+    options:{responsive:true,plugins:{legend:{position:'bottom',labels:{color:'#94a3b8',font:{size:10}}}}}
+  }));
+
+  charts.push(new Chart(document.getElementById('cCtry'),{
+    type:'doughnut',
+    data:{labels:ctry.map(c=>c.country_name||c.country_code),datasets:[{data:ctry.map(c=>c.count),backgroundColor:['#3b82f6','#8b5cf6','#10b981','#f59e0b','#94a3b8'],borderWidth:0}]},
+    options:{responsive:true,plugins:{legend:{position:'bottom',labels:{color:'#94a3b8',font:{size:10}}}}}
+  }));
+}
+
+// 초기 로드
+loadHistory().catch(e=>{
+  document.getElementById('run-list').innerHTML=`<div style="padding:16px;color:var(--red);font-size:11px;">로드 실패: ${e.message}</div>`;
+});
+</script>
+</body>
+</html>
