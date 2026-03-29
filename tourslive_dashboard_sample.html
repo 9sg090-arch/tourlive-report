@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>투어라이브 프로덕트 대시보드</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #0f1117; --card: #1a1d27; --border: #2a2d3e;
+    --text: #e2e8f0; --muted: #94a3b8; --accent: #6366f1;
+    --green: #10b981; --red: #f43f5e; --yellow: #f59e0b; --blue: #3b82f6;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, 'Pretendard', 'Noto Sans KR', sans-serif; padding: 28px; }
+  h1 { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
+  .subtitle { color: var(--muted); font-size: 13px; margin-bottom: 28px; }
+  .sample-banner { background: #f59e0b22; border: 1px solid #f59e0b55; color: #f59e0b; border-radius: 8px; padding: 10px 16px; font-size: 12px; margin-bottom: 20px; }
+
+  .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 28px; }
+  .kpi-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
+  .kpi-card .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 8px; }
+  .kpi-card .value { font-size: 28px; font-weight: 700; }
+  .kpi-card .sub { font-size: 12px; color: var(--muted); margin-top: 6px; }
+  .kpi-card.green  { border-top: 3px solid var(--green); }
+  .kpi-card.blue   { border-top: 3px solid var(--blue); }
+  .kpi-card.accent { border-top: 3px solid var(--accent); }
+  .kpi-card.yellow { border-top: 3px solid var(--yellow); }
+  .kpi-card.red    { border-top: 3px solid var(--red); }
+
+  .charts-row  { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; margin-bottom: 20px; }
+  .charts-row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+  .chart-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
+  .chart-card h3 { font-size: 14px; font-weight: 600; margin-bottom: 16px; }
+  .chart-card canvas { max-height: 240px; }
+
+  .insight-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+  .insight-card, .table-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
+  .insight-card h3, .table-card h3 { font-size: 14px; font-weight: 600; margin-bottom: 14px; }
+  .insight-item { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 12px; font-size: 13px; line-height: 1.5; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 9999px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+  .badge.warn { background: #f59e0b22; color: var(--yellow); }
+  .badge.ok   { background: #10b98122; color: var(--green); }
+  .badge.crit { background: #f43f5e22; color: var(--red); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; color: var(--muted); font-weight: 500; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+  td { padding: 8px; border-bottom: 1px solid var(--border); }
+  tr:last-child td { border-bottom: none; }
+
+  footer { text-align: center; color: var(--muted); font-size: 11px; margin-top: 32px; }
+
+  @media (max-width: 768px) {
+    .charts-row, .charts-row2, .insight-row { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<h1>🌏 투어라이브 프로덕트 대시보드</h1>
+<p class="subtitle">기간: 2026-02-27 ~ 2026-03-28 &nbsp;|&nbsp; 마지막 업데이트: 2026-03-29 (샘플 데이터)</p>
+<div class="sample-banner">⚠️ 이것은 <strong>샘플 데이터</strong>로 만든 미리보기입니다. 실제 데이터는 <code>tourslive_config.json</code>에 API 키를 입력 후 <code>python tourslive_fetch.py</code>를 실행하면 됩니다.</div>
+
+<!-- KPI 카드 -->
+<div class="kpi-grid">
+  <div class="kpi-card blue">
+    <div class="label">MAU (30일 피크 DAU)</div>
+    <div class="value">1,611</div>
+    <div class="sub">월간 활성 사용자</div>
+  </div>
+  <div class="kpi-card green">
+    <div class="label">총 예약 건수</div>
+    <div class="value">2,156</div>
+    <div class="sub">기간 내 확정 예약</div>
+  </div>
+  <div class="kpi-card accent">
+    <div class="label">최종 전환율</div>
+    <div class="value">5.2%</div>
+    <div class="sub">방문 → 결제 완료</div>
+  </div>
+  <div class="kpi-card yellow">
+    <div class="label">총 매출</div>
+    <div class="value">4억 2천만</div>
+    <div class="sub">기간 내 결제 매출 (KRW)</div>
+  </div>
+  <div class="kpi-card green">
+    <div class="label">활성 투어 수</div>
+    <div class="value">247</div>
+    <div class="sub">현재 판매 중인 상품</div>
+  </div>
+  <div class="kpi-card blue">
+    <div class="label">신규 가입자</div>
+    <div class="value">3,842</div>
+    <div class="sub">기간 내 신규 가입</div>
+  </div>
+</div>
+
+<!-- 차트 Row 1 -->
+<div class="charts-row">
+  <div class="chart-card">
+    <h3>📈 DAU 트렌드 (일별 활성 사용자)</h3>
+    <canvas id="dauChart"></canvas>
+  </div>
+  <div class="chart-card">
+    <h3>🔽 전환 퍼널</h3>
+    <canvas id="funnelChart"></canvas>
+  </div>
+</div>
+
+<!-- 차트 Row 2 -->
+<div class="charts-row2">
+  <div class="chart-card">
+    <h3>💰 일별 매출 트렌드</h3>
+    <canvas id="revenueChart"></canvas>
+  </div>
+  <div class="chart-card">
+    <h3>👁 일별 투어 조회 수</h3>
+    <canvas id="viewChart"></canvas>
+  </div>
+</div>
+
+<!-- 인사이트 + 상위 투어 -->
+<div class="insight-row">
+  <div class="insight-card">
+    <h3>🔍 프로덕트 현황 체크리스트</h3>
+    <div id="insightList"></div>
+  </div>
+  <div class="table-card">
+    <h3>🏆 Top 5 예약 투어</h3>
+    <table>
+      <thead><tr><th>#</th><th>투어명</th><th>예약</th><th>매출</th></tr></thead>
+      <tbody id="topToursBody"></tbody>
+    </table>
+  </div>
+</div>
+
+<footer>투어라이브 대시보드 · 데이터 소스: Mixpanel + Radash · 샘플 데이터</footer>
+
+<script>
+const D = {"dau":{"dates":["2026-02-27","2026-02-28","2026-03-01","2026-03-02","2026-03-03","2026-03-04","2026-03-05","2026-03-06","2026-03-07","2026-03-08","2026-03-09","2026-03-10","2026-03-11","2026-03-12","2026-03-13","2026-03-14","2026-03-15","2026-03-16","2026-03-17","2026-03-18","2026-03-19","2026-03-20","2026-03-21","2026-03-22","2026-03-23","2026-03-24","2026-03-25","2026-03-26","2026-03-27","2026-03-28"],"values":[1184,1247,1219,1283,1142,1308,1251,1366,1282,1378,1353,1302,1409,1421,1436,1398,1447,1382,1459,1503,1478,1521,1543,1499,1567,1532,1588,1575,1601,1611]},"mau":1611,"tour_views":{"dates":["2026-02-27","2026-02-28","2026-03-01","2026-03-02","2026-03-03","2026-03-04","2026-03-05","2026-03-06","2026-03-07","2026-03-08","2026-03-09","2026-03-10","2026-03-11","2026-03-12","2026-03-13","2026-03-14","2026-03-15","2026-03-16","2026-03-17","2026-03-18","2026-03-19","2026-03-20","2026-03-21","2026-03-22","2026-03-23","2026-03-24","2026-03-25","2026-03-26","2026-03-27","2026-03-28"],"values":[3821,4102,3644,4298,3301,4521,3987,4612,4187,4741,4501,4321,4889,4812,4951,4723,4981,4612,4932,5124,4987,5234,5391,5012,5401,5213,5489,5312,5521,5589]},"funnel":{"labels":["앱/웹 방문 (Session Start)","투어 상세 조회 (Tour View)","예약/결제 완료 (Purchase)"],"values":[41521,15779,2159]},"revenue":{"dates":["2026-02-27","2026-02-28","2026-03-01","2026-03-02","2026-03-03","2026-03-04","2026-03-05","2026-03-06","2026-03-07","2026-03-08","2026-03-09","2026-03-10","2026-03-11","2026-03-12","2026-03-13","2026-03-14","2026-03-15","2026-03-16","2026-03-17","2026-03-18","2026-03-19","2026-03-20","2026-03-21","2026-03-22","2026-03-23","2026-03-24","2026-03-25","2026-03-26","2026-03-27","2026-03-28"],"values":[11823456,16842317,12183921,11974832,17312849,17843921,12021847,13284751,14019283,13748291,14312847,18923847,19283745,14021847,14183921,15021847,15283921,19841237,14982731,15123847,16021847,20183924,21283741,15984731,16012847,17283921,21892847,16847291,17021847,18293847]},"total_revenue":479283041,"total_bookings":2159,"conversion_rate":5.2,"active_tours":247,"new_users":3842,"total_users":48291,"top_tours":[{"name":"🌊 제주 스쿠버다이빙 풀코스","bookings":312,"revenue":46800000},{"name":"🏔 설악산 1박2일 트레킹","bookings":287,"revenue":43050000},{"name":"🌸 경주 문화유산 투어","bookings":241,"revenue":24100000},{"name":"🚢 부산 야경 크루즈","bookings":198,"revenue":17820000},{"name":"🎭 전주 한옥마을 체험","bookings":176,"revenue":14080000}]};
+
+const gridColor = 'rgba(255,255,255,0.06)';
+const commonScales = {
+  x: { ticks: { color: '#94a3b8', font: { size: 10 } }, grid: { color: gridColor } },
+  y: { ticks: { color: '#94a3b8', font: { size: 10 } }, grid: { color: gridColor } },
+};
+
+// DAU
+new Chart(document.getElementById('dauChart'), {
+  type: 'line',
+  data: {
+    labels: D.dau.dates.map(d => d.slice(5)),
+    datasets: [{
+      label: 'DAU',
+      data: D.dau.values,
+      borderColor: '#3b82f6',
+      backgroundColor: 'rgba(59,130,246,0.12)',
+      fill: true, tension: 0.4, pointRadius: 2,
+    }],
+  },
+  options: { responsive: true, plugins: { legend: { display: false } }, scales: commonScales },
+});
+
+// 퍼널
+new Chart(document.getElementById('funnelChart'), {
+  type: 'bar',
+  data: {
+    labels: D.funnel.labels,
+    datasets: [{
+      data: D.funnel.values,
+      backgroundColor: ['#3b82f6', '#6366f1', '#10b981'],
+      borderRadius: 6,
+    }],
+  },
+  options: {
+    indexAxis: 'y',
+    responsive: true,
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        callbacks: {
+          afterLabel: (ctx) => {
+            const first = D.funnel.values[0] || 1;
+            return `전환율: ${(ctx.raw / first * 100).toFixed(1)}%`;
+          },
+        },
+      },
+    },
+    scales: commonScales,
+  },
+});
+
+// 매출
+new Chart(document.getElementById('revenueChart'), {
+  type: 'bar',
+  data: {
+    labels: D.revenue.dates.map(d => d.slice(5)),
+    datasets: [{
+      label: '매출',
+      data: D.revenue.values,
+      backgroundColor: 'rgba(245,158,11,0.75)',
+      borderRadius: 4,
+    }],
+  },
+  options: {
+    responsive: true,
+    plugins: { legend: { display: false } },
+    scales: {
+      ...commonScales,
+      y: { ...commonScales.y, ticks: { ...commonScales.y.ticks,
+        callback: v => (v >= 10000000 ? (v/10000000).toFixed(0)+'천만' : v >= 10000 ? (v/10000).toFixed(0)+'만') + '₩'
+      }},
+    },
+  },
+});
+
+// 투어 조회
+new Chart(document.getElementById('viewChart'), {
+  type: 'line',
+  data: {
+    labels: D.tour_views.dates.map(d => d.slice(5)),
+    datasets: [{
+      label: '투어 조회',
+      data: D.tour_views.values,
+      borderColor: '#10b981',
+      backgroundColor: 'rgba(16,185,129,0.10)',
+      fill: true, tension: 0.4, pointRadius: 2,
+    }],
+  },
+  options: { responsive: true, plugins: { legend: { display: false } }, scales: commonScales },
+});
+
+// Top 투어
+const tbody = document.getElementById('topToursBody');
+D.top_tours.forEach((t, i) => {
+  tbody.innerHTML += `<tr>
+    <td style="color:#94a3b8">${i+1}</td>
+    <td>${t.name}</td>
+    <td><strong>${t.bookings.toLocaleString()}</strong></td>
+    <td>${(t.revenue/10000).toLocaleString()}만원</td>
+  </tr>`;
+});
+
+// 인사이트
+const insights = [];
+const cr = D.conversion_rate;
+const dau = D.dau.values;
+const dauLast = dau.slice(-7), dauPrev = dau.slice(-14,-7);
+const avgLast = dauLast.reduce((a,b)=>a+b,0)/7;
+const avgPrev = dauPrev.reduce((a,b)=>a+b,0)/7;
+const dauTrend = ((avgLast - avgPrev) / avgPrev * 100).toFixed(1);
+
+if (cr < 1) insights.push({badge:'crit', text:`전환율 ${cr}% — 매우 낮음. 결제 플로우/상세 페이지 즉시 점검 필요`});
+else if (cr < 3) insights.push({badge:'warn', text:`전환율 ${cr}% — 개선 여지 있음. CTA 최적화 및 가격 정책 검토 권장`});
+else insights.push({badge:'ok', text:`전환율 ${cr}% — 양호. 업계 평균(2~5%) 상위권`});
+
+if (dauTrend < -10) insights.push({badge:'crit', text:`DAU 전주 대비 ${dauTrend}% 하락 — 마케팅/리텐션 캠페인 긴급 검토`});
+else if (dauTrend < 0) insights.push({badge:'warn', text:`DAU 소폭 감소 (${dauTrend}%) — 지속 모니터링 필요`});
+else insights.push({badge:'ok', text:`DAU 전주 대비 +${dauTrend}% 성장 중`});
+
+const fv = D.funnel.values;
+const viewRate = (fv[1]/fv[0]*100).toFixed(1);
+if (viewRate < 25) insights.push({badge:'crit', text:`방문→투어조회 전환 ${viewRate}% — 홈 탐색 UX 점검 필요`});
+else if (viewRate < 40) insights.push({badge:'warn', text:`방문→투어조회 전환 ${viewRate}% — 콘텐츠 노출 방식 개선 고려`});
+else insights.push({badge:'ok', text:`방문→투어조회 전환 ${viewRate}% — 양호`});
+
+const purchaseRate = (fv[2]/fv[1]*100).toFixed(1);
+if (purchaseRate < 10) insights.push({badge:'warn', text:`상세조회→구매 ${purchaseRate}% — 상품 페이지 신뢰도·가격 정보 강화 고려`});
+else insights.push({badge:'ok', text:`상세조회→구매 ${purchaseRate}% — 양호`});
+
+const il = document.getElementById('insightList');
+insights.forEach(ins => {
+  il.innerHTML += `<div class="insight-item">
+    <span class="badge ${ins.badge}">${ins.badge==='crit'?'🚨 긴급':ins.badge==='warn'?'⚠️ 주의':'✅ 정상'}</span>
+    <span>${ins.text}</span>
+  </div>`;
+});
+</script>
+</body>
+</html>

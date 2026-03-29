@@ -1,0 +1,33 @@
+{
+  "_comment": "투어라이브 대시보드 API 설정 파일 — 각 항목을 실제 값으로 채워주세요",
+
+  "mixpanel": {
+    "_comment": "Mixpanel > 프로젝트 설정 > Service Accounts 에서 발급",
+    "project_id": "YOUR_MIXPANEL_PROJECT_ID",
+    "project_secret": "YOUR_MIXPANEL_PROJECT_SECRET",
+    "events": {
+      "session_start": "Session Start",
+      "tour_view": "Tour View",
+      "purchase": "Purchase"
+    }
+  },
+
+  "radash": {
+    "_comment": "Radash(서버) API 기본 URL 및 인증 키",
+    "base_url": "https://your-radash-server.com",
+    "api_key": "YOUR_RADASH_API_KEY",
+    "endpoints": {
+      "bookings": "/api/bookings",
+      "revenue": "/api/revenue",
+      "tours": "/api/tours",
+      "users": "/api/users/stats"
+    }
+  },
+
+  "dashboard": {
+    "lookback_days": 30,
+    "currency": "KRW",
+    "timezone": "Asia/Seoul",
+    "output_file": "tourslive_dashboard.html"
+  }
+}
