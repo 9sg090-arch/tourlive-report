@@ -30,10 +30,11 @@ jobs:
         with:
           python-version: "3.11"
           cache: "pip"
+          cache-dependency-path: "requirements.txt"
 
       # ── 3. 의존성 설치
       - name: 📦 의존성 설치
-        run: pip install requests
+        run: pip install -r requirements.txt
 
       # ── 4. 동기화 실행
       - name: 🔄 Mixpanel 자동 동기화 실행
