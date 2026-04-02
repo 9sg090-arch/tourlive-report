@@ -9,9 +9,9 @@ on:
   workflow_dispatch:
     inputs:
       lookback_days:
-        description: "조회 기간 (일수, 기본 1 = 어제)"
+        description: "조회 기간 (일수, 기본 3 = 최근 3일)"
         required: false
-        default: "1"
+        default: "3"
 
 jobs:
   sync:
@@ -43,7 +43,7 @@ jobs:
           MIXPANEL_PROJECT_SECRET: ${{ secrets.MIXPANEL_PROJECT_SECRET }}
           SUPABASE_URL:            ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY:            ${{ secrets.SUPABASE_KEY }}
-          LOOKBACK_DAYS:           ${{ github.event.inputs.lookback_days || '1' }}
+          LOOKBACK_DAYS:           ${{ github.event.inputs.lookback_days || '3' }}
         run: python mixpanel_auto_sync.py
 
       # ── 5. 실패 알림 (선택)

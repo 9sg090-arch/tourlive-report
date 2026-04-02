@@ -33,9 +33,10 @@ NOW = datetime.now(tz=TZ)
 MP_PROJECT_ID = os.environ.get("MIXPANEL_PROJECT_ID", "")
 MP_SECRET     = os.environ.get("MIXPANEL_PROJECT_SECRET", "")
 
-LOOKBACK      = int(os.environ.get("LOOKBACK_DAYS", "1"))
-DATE_TO       = (NOW - timedelta(days=1)).strftime("%Y-%m-%d")   # 어제
-DATE_FROM     = (NOW - timedelta(days=LOOKBACK)).strftime("%Y-%m-%d")
+# Mixpanel Export API는 보통 24~48시간 딜레이 있음 → 2일 전 ~ 2일 전이 안전
+LOOKBACK      = int(os.environ.get("LOOKBACK_DAYS", "3"))
+DATE_TO       = (NOW - timedelta(days=2)).strftime("%Y-%m-%d")   # 2일 전 (딜레이 감안)
+DATE_FROM     = (NOW - timedelta(days=LOOKBACK + 1)).strftime("%Y-%m-%d")
 
 # Supabase — 환경변수 우선, 없으면 기존 하드코딩 값 폴백
 SB_URL = os.environ.get("SUPABASE_URL", "https://udbslvrmlqtcltpnkenw.supabase.co")
@@ -92,46 +93,36 @@ def fetch_raw_events() -> list[dict]:
 
 
 # ──────────────────────────────────────────────
-# 2. Mixpanel Segmentation API — 시간별 DAU
+# 2. 원시 이벤트에서 시간별 DAU 계산 (Segmentation API 불필요)
 # ──────────────────────────────────────────────
-def fetch_hourly_dau() -> tuple[dict, dict]:
-    """Session Start 이벤트의 오늘/어제 시간별 유니크 유저 수"""
-    def _fetch(date: str) -> dict:
-        try:
-            params = {
-                "event":     '["Session Start", "App Session"]',
-                "from_date": date,
-                "to_date":   date,
-                "type":      "unique",
-                "unit":      "hour",
-            }
-            r = requests.get(
-                "https://mixpanel.com/api/2.0/segmentation",
-                headers={**MP_HEADERS, "Accept": "application/json"},
-                params=params,
-                timeout=30,
-            )
-            r.raise_for_status()
-            series = r.json().get("data", {}).get("series", {})
-            # series 키 형식: "2024-01-01 00:00:00"
-            result = {}
-            for key, val in series.items():
-                try:
-                    hour = int(key[11:13])
-                    result[hour] = val
-                except (ValueError, IndexError):
-                    pass
-            return result
-        except Exception as e:
-            print(f"  ⚠️  시간별 DAU 수집 실패 ({date}): {e}")
-            return {}
+def calc_hourly_dau(raw: list[dict]) -> tuple[dict, dict]:
+    """Export API 원시 이벤트에서 날짜별·시간별 유니크 유저 수를 계산합니다.
+    오늘(DATE_TO) 데이터를 today, 하루 전 데이터를 prev로 반환합니다."""
+    prev_date = (datetime.strptime(DATE_TO, "%Y-%m-%d") - timedelta(days=1)).strftime("%Y-%m-%d")
+    # {date: {hour: set(distinct_id)}}
+    buckets: dict[str, dict[int, set]] = {}
 
-    today_date = DATE_TO
-    prev_date  = (datetime.strptime(DATE_TO, "%Y-%m-%d") - timedelta(days=1)).strftime("%Y-%m-%d")
-    print("📊 시간별 DAU 수집 중…")
-    today_dau = _fetch(today_date)
-    prev_dau  = _fetch(prev_date)
-    print(f"  ✅ 오늘 DAU 합계: {sum(today_dau.values()):,}, 전일: {sum(prev_dau.values()):,}")
+    for row in raw:
+        props = row.get("properties", {})
+        did   = str(props.get("distinct_id", ""))
+        ts    = props.get("time", 0)
+        if not ts:
+            continue
+        try:
+            dt = datetime.fromtimestamp(float(ts), tz=TZ)
+            date_str = dt.strftime("%Y-%m-%d")
+            hour     = dt.hour
+            buckets.setdefault(date_str, {}).setdefault(hour, set()).add(did)
+        except (ValueError, OSError):
+            pass
+
+    def _to_count(date_str: str) -> dict:
+        day_data = buckets.get(date_str, {})
+        return {h: len(users) for h, users in day_data.items()}
+
+    today_dau = _to_count(DATE_TO)
+    prev_dau  = _to_count(prev_date)
+    print(f"  ✅ DAU — {DATE_TO}: {sum(today_dau.values()):,}명, {prev_date}: {sum(prev_dau.values()):,}명")
     return today_dau, prev_dau
 
 
@@ -311,16 +302,16 @@ def main():
     print("=" * 50)
 
     # ─ 데이터 수집
-    raw_events         = fetch_raw_events()
-    dau_today, dau_prev = fetch_hourly_dau()
+    raw_events = fetch_raw_events()
 
-    if not raw_events and not dau_today:
+    if not raw_events:
         print("⚠️  수집된 데이터가 없습니다. 종료.")
         return
 
     # ─ 집계
     print("🔢 이벤트 집계 중…")
     agg = aggregate_events(raw_events)
+    dau_today, dau_prev = calc_hourly_dau(raw_events)
     print(f"  총 이벤트: {agg['total']:,}건 | 유니크 유저: {agg['unique_users']:,}명")
     print(f"  상위 이벤트: {', '.join(f'{k}({v})' for k,v in agg['event_counts'].most_common(5))}")
 
