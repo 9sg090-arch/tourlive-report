@@ -18,13 +18,24 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,'Pretendar
 
 /* ── 사이드바 ── */
 #sidebar{width:256px;min-width:256px;background:var(--sidebar);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;}
-#sidebar-header{padding:18px 16px 12px;border-bottom:1px solid var(--border);}
+#sidebar-header{padding:14px 16px 10px;border-bottom:1px solid var(--border);}
 #sidebar-header .logo{font-size:14px;font-weight:700;}
 #sidebar-header .sub{font-size:10px;color:var(--muted2);margin-top:2px;}
+/* ── 자동 동기화 상태 바 ── */
+#sync-status-bar{padding:8px 14px;background:#10b98108;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:7px;cursor:default;}
+#sync-dot{width:7px;height:7px;border-radius:50%;background:var(--muted2);flex-shrink:0;}
+#sync-dot.active{background:var(--green);box-shadow:0 0 6px #10b98166;}
+#sync-dot.error{background:var(--red);}
+#sync-text{font-size:10px;color:var(--muted);line-height:1.4;flex:1;}
+#sync-refresh-btn{font-size:10px;background:none;border:none;color:var(--muted2);cursor:pointer;padding:2px 4px;border-radius:4px;}
+#sync-refresh-btn:hover{color:var(--text);}
+/* ── 런 목록 ── */
 #run-list{flex:1;overflow-y:auto;padding:8px 0;}
 .run-item{padding:10px 16px;cursor:pointer;border-left:3px solid transparent;transition:all .15s;}
 .run-item:hover{background:var(--card2);}
 .run-item.active{background:var(--card2);border-left-color:var(--blue);}
+.run-item.auto{border-left-color:transparent;}
+.run-item.auto.active{border-left-color:var(--green);}
 .run-date{font-size:12px;font-weight:600;}
 .run-label{font-size:11px;color:var(--muted);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .run-badges{display:flex;gap:4px;margin-top:5px;flex-wrap:wrap;}
@@ -32,9 +43,12 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,'Pretendar
 .rbadge.crit{background:#f43f5e22;color:#f43f5e;}
 .rbadge.warn{background:#f59e0b22;color:#f59e0b;}
 .rbadge.ok{background:#10b98122;color:#10b981;}
-#upload-zone-btn{padding:12px 14px;border-top:1px solid var(--border);}
+.rbadge.auto{background:#10b98118;color:#10b981;}
+#upload-zone-btn{padding:10px 14px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:6px;}
 #open-upload-btn{width:100%;padding:9px;border-radius:8px;background:var(--blue);color:#fff;font-size:12px;font-weight:600;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;}
 #open-upload-btn:hover{background:#2563eb;}
+#gh-actions-btn{width:100%;padding:7px;border-radius:8px;background:var(--card2);color:var(--muted);font-size:11px;font-weight:500;border:1px solid var(--border);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px;text-decoration:none;}
+#gh-actions-btn:hover{background:var(--border);color:var(--text);}
 
 /* ── 메인 ── */
 #main{flex:1;overflow-y:auto;padding:22px 26px;}
@@ -135,6 +149,12 @@ footer{text-align:center;color:var(--muted2);font-size:10px;margin-top:20px;padd
     <div class="logo">🌏 투어라이브 대시보드</div>
     <div class="sub">분석 히스토리</div>
   </div>
+  <!-- 자동 동기화 상태 -->
+  <div id="sync-status-bar" title="GitHub Actions로 매일 오전 1시 자동 동기화">
+    <div id="sync-dot"></div>
+    <div id="sync-text">동기화 상태 확인 중…</div>
+    <button id="sync-refresh-btn" onclick="loadHistory()" title="새로고침">↻</button>
+  </div>
   <div id="run-list">
     <div style="padding:16px;text-align:center;color:var(--muted2);font-size:11px;">
       <div class="spinner" style="margin:0 auto 8px;"></div>로딩 중…
@@ -142,6 +162,9 @@ footer{text-align:center;color:var(--muted2);font-size:10px;margin-top:20px;padd
   </div>
   <div id="upload-zone-btn">
     <button id="open-upload-btn" onclick="openUpload()">＋ CSV 업로드 &amp; 분석</button>
+    <a id="gh-actions-btn" href="https://github.com/9sg090-arch/tourlive-report/actions" target="_blank" rel="noopener">
+      🤖 GitHub Actions (수동 실행)
+    </a>
   </div>
 </div>
 
@@ -485,6 +508,30 @@ function openUpload() { document.getElementById('upload-modal').classList.add('o
 function closeUpload() { document.getElementById('upload-modal').classList.remove('open'); }
 document.getElementById('upload-modal').addEventListener('click', e => { if(e.target.id==='upload-modal') closeUpload(); });
 
+// ── 자동 동기화 여부 판별 ─────────────────────────────────────────────
+function isAutoRun(label) {
+  return label && (label.includes('🤖') || label.includes('자동 동기화') || label.includes('[API 자동]'));
+}
+
+// ── 동기화 상태 바 업데이트 ──────────────────────────────────────────
+function updateSyncStatusBar(runs) {
+  const dot  = document.getElementById('sync-dot');
+  const text = document.getElementById('sync-text');
+  const autoRuns = runs.filter(r => isAutoRun(r.label || ''));
+  if (!autoRuns.length) {
+    dot.className = '';
+    text.innerHTML = 'API 자동 동기화 미설정<br><span style="color:#3b82f6;font-size:9px;">GitHub Actions 설정 필요</span>';
+    return;
+  }
+  const last = autoRuns[0];
+  const lastDt = new Date(last.created_at);
+  const diffH  = Math.round((Date.now() - lastDt) / 3600000);
+  const diffStr = diffH < 1 ? '방금' : diffH < 24 ? `${diffH}시간 전` : `${Math.floor(diffH/24)}일 전`;
+  const isRecent = diffH < 26; // 하루 + 2시간 여유
+  dot.className = isRecent ? 'active' : 'error';
+  text.innerHTML = `마지막 동기화: <strong>${last.date_to}</strong><br><span style="color:var(--muted2)">${diffStr} · 매일 01:00 KST</span>`;
+}
+
 // ── 히스토리 사이드바 ─────────────────────────────────────────────────
 async function loadHistory() {
   const [runs, issues] = await Promise.all([
@@ -497,6 +544,10 @@ async function loadHistory() {
     if (i.severity==='critical') issueMap[i.run_id].c++;
     if (i.severity==='warning')  issueMap[i.run_id].w++;
   });
+
+  // 동기화 상태 바 업데이트
+  updateSyncStatusBar(runs);
+
   const list = document.getElementById('run-list');
   list.innerHTML = '';
   if (!runs.length) {
@@ -504,18 +555,20 @@ async function loadHistory() {
     return;
   }
   runs.forEach((r,i) => {
-    const im = issueMap[r.id]||{c:0,w:0};
+    const im     = issueMap[r.id]||{c:0,w:0};
+    const isAuto = isAutoRun(r.label || '');
     const badges = [
-      im.c ? `<span class="rbadge crit">🚨 ${im.c}</span>` : '',
-      im.w ? `<span class="rbadge warn">⚠️ ${im.w}</span>` : '',
+      isAuto ? `<span class="rbadge auto">🤖 API</span>` : `<span class="rbadge" style="background:#3b82f622;color:#3b82f6">📂 CSV</span>`,
+      im.c   ? `<span class="rbadge crit">🚨 ${im.c}</span>` : '',
+      im.w   ? `<span class="rbadge warn">⚠️ ${im.w}</span>` : '',
       (!im.c&&!im.w) ? `<span class="rbadge ok">✅</span>` : '',
     ].join('');
     const timeStr = new Date(r.created_at).toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'});
     const el = document.createElement('div');
-    el.className = 'run-item' + (i===0?' active':'');
+    el.className = 'run-item' + (isAuto ? ' auto' : '') + (i===0 ? ' active' : '');
     el.dataset.id = r.id;
     el.innerHTML = `
-      <div class="run-date">${r.date_from} <span style="color:var(--muted2);font-weight:400;font-size:10px;">${timeStr}</span></div>
+      <div class="run-date">${r.date_from}${r.date_to && r.date_to!==r.date_from ? ` ~ ${r.date_to}` : ''} <span style="color:var(--muted2);font-weight:400;font-size:10px;">${timeStr}</span></div>
       <div class="run-label">${r.label||'분석'}</div>
       <div class="run-badges">${badges}</div>`;
     el.onclick = () => {
@@ -561,10 +614,14 @@ async function loadRun(runId, meta) {
       <div class="abody">${crits.map(i=>`<strong>${i.title}</strong><br>${i.description}`).join('<br><br>')}</div>
     </div>` : '';
 
+  const autoTag = isAutoRun(meta.label||'')
+    ? `<span style="font-size:11px;background:#10b98122;color:#10b981;padding:3px 9px;border-radius:20px;font-weight:600;vertical-align:middle;margin-left:8px;">🤖 API 자동</span>`
+    : `<span style="font-size:11px;background:#3b82f622;color:#3b82f6;padding:3px 9px;border-radius:20px;font-weight:600;vertical-align:middle;margin-left:8px;">📂 CSV</span>`;
+
   document.getElementById('content').innerHTML = `
     <div class="page-header">
-      <h1>📊 ${meta.label||meta.date_from}</h1>
-      <div class="subtitle">기준일: ${meta.date_from} &nbsp;|&nbsp; 이벤트 ${meta.total_events||0}건 · 유저 ${meta.unique_users||0}명</div>
+      <h1>📊 ${meta.label||meta.date_from} ${autoTag}</h1>
+      <div class="subtitle">기준일: ${meta.date_from}${meta.date_to&&meta.date_to!==meta.date_from?' ~ '+meta.date_to:''} &nbsp;|&nbsp; 이벤트 ${meta.total_events||0}건 · 유저 ${meta.unique_users||0}명</div>
     </div>
     ${critBanner}
     <div class="kpi-grid">

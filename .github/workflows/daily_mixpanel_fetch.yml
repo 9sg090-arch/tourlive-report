@@ -1,0 +1,52 @@
+name: 🤖 Mixpanel 일일 자동 동기화
+
+on:
+  # 매일 오전 1시 (KST) = 16:00 UTC
+  schedule:
+    - cron: "0 16 * * *"
+
+  # GitHub UI / API에서 수동 실행 가능
+  workflow_dispatch:
+    inputs:
+      lookback_days:
+        description: "조회 기간 (일수, 기본 1 = 어제)"
+        required: false
+        default: "1"
+
+jobs:
+  sync:
+    name: Mixpanel → Supabase 동기화
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      # ── 1. 코드 체크아웃
+      - name: 📥 코드 체크아웃
+        uses: actions/checkout@v4
+
+      # ── 2. Python 설정
+      - name: 🐍 Python 3.11 설정
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      # ── 3. 의존성 설치
+      - name: 📦 의존성 설치
+        run: pip install requests
+
+      # ── 4. 동기화 실행
+      - name: 🔄 Mixpanel 자동 동기화 실행
+        env:
+          MIXPANEL_PROJECT_ID:     ${{ secrets.MIXPANEL_PROJECT_ID }}
+          MIXPANEL_PROJECT_SECRET: ${{ secrets.MIXPANEL_PROJECT_SECRET }}
+          SUPABASE_URL:            ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY:            ${{ secrets.SUPABASE_KEY }}
+          LOOKBACK_DAYS:           ${{ github.event.inputs.lookback_days || '1' }}
+        run: python mixpanel_auto_sync.py
+
+      # ── 5. 실패 알림 (선택)
+      - name: ❌ 실패 알림
+        if: failure()
+        run: |
+          echo "::error::Mixpanel 자동 동기화 실패 — GitHub Actions 로그를 확인하세요."
