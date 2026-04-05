@@ -210,7 +210,7 @@ def aggregate_events(raw: list[dict]) -> dict:
 # ──────────────────────────────────────────────
 FUNNEL_STEPS = [
     ("tour_view",         "투어 상세",   "PageView_Tour"),
-    ("begin_purchase",    "구매 시작",   "EventOn_BeginPurchase"),
+    ("complete_purchase", "구매 완료",   "EventOn_CompletePurchase"),
     ("purchased_content", "콘텐츠 접근", "PageView_PurchasedContent"),
     ("player",            "재생",        "EventOn_ClickTourTopPlay"),
 ]
