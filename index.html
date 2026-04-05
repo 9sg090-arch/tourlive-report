@@ -198,8 +198,8 @@ footer{text-align:center;color:var(--muted2);font-size:10px;margin-top:20px;padd
 #drilldown-panel h3{font-size:12px;font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:8px;}
 #drilldown-close{margin-left:auto;background:none;border:none;color:var(--muted2);cursor:pointer;font-size:14px;padding:2px 6px;border-radius:4px;}
 #drilldown-close:hover{color:var(--text);background:var(--card2);}
-.prop-section{margin-bottom:18px;}
-.prop-section:last-child{margin-bottom:0;}
+.prop-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;align-items:start;}
+.prop-section{min-width:0;}
 .prop-section-title{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;}
 .prop-row{display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border);font-size:12px;}
 .prop-row:last-child{border-bottom:none;}
@@ -527,10 +527,11 @@ async function openTourDrilldown(stepEl) {
   document.getElementById('drilldown-body').innerHTML =
     (props.length === 0
       ? '<div style="color:var(--muted);font-size:12px;padding:8px 0;">데이터 없음 — 다음 자동 동기화 후 조회하세요.</div>'
-      : legend +
-        renderPropSection('🏙 도시별 조회', cities) +
-        renderPropSection('🌍 국가별 조회', countries) +
-        renderPropSection('🎫 투어별 조회', tours));
+      : legend + `<div class="prop-grid">
+          ${renderPropSection('🏙 도시별 조회', cities)}
+          ${renderPropSection('🌍 국가별 조회', countries)}
+          ${renderPropSection('🎫 투어별 조회', tours)}
+        </div>`);
 }
 
 // ── 파일 상태 ────────────────────────────────────────────────────────
