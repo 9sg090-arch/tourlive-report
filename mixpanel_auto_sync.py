@@ -205,7 +205,42 @@ def aggregate_events(raw: list[dict]) -> dict:
 
 
 # ──────────────────────────────────────────────
-# 4. 이슈 자동 감지
+# 4. 퍼널 집계 (투어 상세 → 구매 시작 → 콘텐츠 접근 → 재생)
+# ──────────────────────────────────────────────
+FUNNEL_STEPS = [
+    ("tour_view",         "투어 상세",   "PageView_Tour"),
+    ("begin_purchase",    "구매 시작",   "EventOn_BeginPurchase"),
+    ("purchased_content", "콘텐츠 접근", "PageView_PurchasedContent"),
+    ("player",            "재생",        "EventOn_ClickTourTopPlay"),
+]
+
+def calc_funnel(raw_today: list[dict], raw_prev: list[dict]) -> list[dict]:
+    """오늘/전일 원시 이벤트에서 퍼널 단계별 이벤트 수를 집계합니다."""
+    def count_events(raw: list[dict]) -> dict:
+        counts: dict[str, int] = {}
+        for row in raw:
+            e = row.get("event", "").strip()
+            if e:
+                counts[e] = counts.get(e, 0) + 1
+        return counts
+
+    today_counts = count_events(raw_today)
+    prev_counts  = count_events(raw_prev)
+
+    rows = []
+    for step_key, label, event_name in FUNNEL_STEPS:
+        rows.append({
+            "step":        step_key,
+            "step_label":  label,
+            "today_count": today_counts.get(event_name, 0),
+            "prev_count":  prev_counts.get(event_name, 0),
+        })
+    print(f"  ✅ 퍼널 집계 완료: {[f'{r[\"step_label\"]}({r[\"today_count\"]})' for r in rows]}")
+    return rows
+
+
+# ──────────────────────────────────────────────
+# 5. 이슈 자동 감지
 # ──────────────────────────────────────────────
 def detect_issues(agg: dict, dau_today: dict, dau_prev: dict) -> list[dict]:
     issues = []
@@ -275,7 +310,7 @@ def detect_issues(agg: dict, dau_today: dict, dau_prev: dict) -> list[dict]:
 
 
 # ──────────────────────────────────────────────
-# 5. Supabase 저장
+# 6. Supabase 저장
 # ──────────────────────────────────────────────
 def sb_insert(table: str, rows: list[dict]) -> list[dict]:
     if not rows:
@@ -293,7 +328,7 @@ def sb_insert(table: str, rows: list[dict]) -> list[dict]:
 
 
 # ──────────────────────────────────────────────
-# 6. 메인
+# 7. 메인
 # ──────────────────────────────────────────────
 def main():
     print("=" * 50)
@@ -308,12 +343,32 @@ def main():
         print("⚠️  수집된 데이터가 없습니다. 종료.")
         return
 
+    # ─ 날짜별 이벤트 분리 (퍼널 전일 비교용)
+    prev_date = (datetime.strptime(DATE_TO, "%Y-%m-%d") - timedelta(days=1)).strftime("%Y-%m-%d")
+    raw_today_only = []
+    raw_prev_only  = []
+    for row in raw_events:
+        ts = row.get("properties", {}).get("time", 0)
+        try:
+            dt = datetime.fromtimestamp(float(ts), tz=TZ)
+            date_str = dt.strftime("%Y-%m-%d")
+        except (ValueError, OSError):
+            continue
+        if date_str == DATE_TO:
+            raw_today_only.append(row)
+        elif date_str == prev_date:
+            raw_prev_only.append(row)
+
     # ─ 집계
     print("🔢 이벤트 집계 중…")
     agg = aggregate_events(raw_events)
     dau_today, dau_prev = calc_hourly_dau(raw_events)
     print(f"  총 이벤트: {agg['total']:,}건 | 유니크 유저: {agg['unique_users']:,}명")
     print(f"  상위 이벤트: {', '.join(f'{k}({v})' for k,v in agg['event_counts'].most_common(5))}")
+
+    # ─ 퍼널 집계
+    print("🔀 퍼널 집계 중…")
+    funnel_rows = calc_funnel(raw_today_only, raw_prev_only)
 
     # ─ 이슈 감지
     print("🔍 이슈 감지 중…")
@@ -401,6 +456,11 @@ def main():
     if issue_rows:
         sb_insert("detected_issues", issue_rows)
         print(f"  ✅ detected_issues 저장 ({len(issue_rows)}행)")
+
+    # funnel_daily
+    fn_rows = [{**r, "run_id": run_id} for r in funnel_rows]
+    sb_insert("funnel_daily", fn_rows)
+    print(f"  ✅ funnel_daily 저장 ({len(fn_rows)}행)")
 
     print("=" * 50)
     print(f"✅ 자동 동기화 완료! run_id={run_id}")

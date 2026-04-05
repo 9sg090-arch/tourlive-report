@@ -167,6 +167,28 @@ footer{text-align:center;color:var(--muted2);font-size:10px;margin-top:20px;padd
 #tour-more-btn{width:100%;margin-top:10px;padding:7px;background:var(--card2);border:1px solid var(--border);border-radius:7px;color:var(--muted);font-size:11px;cursor:pointer;}
 #tour-more-btn:hover{background:var(--border);color:var(--text);}
 
+/* ── 퍼널 ── */
+.funnel-card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:14px;}
+.funnel-card h3{font-size:12px;font-weight:600;margin-bottom:14px;}
+.funnel-steps{display:grid;grid-template-columns:repeat(4,1fr);gap:0;}
+.funnel-step{position:relative;text-align:center;padding:14px 8px 12px;}
+.funnel-step:not(:last-child)::after{
+  content:'→';position:absolute;right:-8px;top:50%;transform:translateY(-50%);
+  color:var(--muted2);font-size:16px;z-index:1;
+}
+.funnel-step-num{font-size:10px;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.04em;}
+.funnel-step-label{font-size:12px;font-weight:600;margin-bottom:10px;color:var(--text);}
+.funnel-count{font-size:22px;font-weight:700;color:var(--blue);}
+.funnel-prev{font-size:10px;color:var(--muted);margin-top:2px;}
+.funnel-delta{font-size:11px;font-weight:600;margin-top:4px;}
+.funnel-delta.up{color:var(--green);}
+.funnel-delta.down{color:var(--red);}
+.funnel-delta.neu{color:var(--muted);}
+.funnel-conv-row{display:grid;grid-template-columns:repeat(3,1fr);gap:0;margin-top:12px;padding-top:12px;border-top:1px solid var(--border);}
+.funnel-conv{text-align:center;padding:6px 4px;}
+.funnel-conv-label{font-size:10px;color:var(--muted);margin-bottom:3px;}
+.funnel-conv-val{font-size:15px;font-weight:700;color:var(--indigo);}
+
 /* ── 삭제 버튼 ── */
 .run-item{position:relative;}
 .run-delete-btn{
@@ -367,6 +389,7 @@ async function confirmDelete() {
       sbDelete('detected_issues',  `run_id=eq.${id}`),
       sbDelete('dau_hourly',       `run_id=eq.${id}`),
       sbDelete('event_stats',      `run_id=eq.${id}`),
+      sbDelete('funnel_daily',     `run_id=eq.${id}`),
       sbDelete('platform_stats',   `run_id=eq.${id}`),
       sbDelete('country_stats',    `run_id=eq.${id}`),
       sbDelete('tour_view_stats',  `run_id=eq.${id}`),
@@ -778,13 +801,14 @@ async function loadRun(runId, meta) {
   document.getElementById('content').style.display = 'none';
   clearCharts();
 
-  const [dau,evts,plat,ctry,tours,issues] = await Promise.all([
+  const [dau,evts,plat,ctry,tours,issues,funnel] = await Promise.all([
     sbGet(`dau_hourly?run_id=eq.${runId}&order=hour.asc`),
     sbGet(`event_stats?run_id=eq.${runId}&order=count.desc`),
     sbGet(`platform_stats?run_id=eq.${runId}&order=count.desc`),
     sbGet(`country_stats?run_id=eq.${runId}&order=count.desc`),
     sbGet(`tour_view_stats?run_id=eq.${runId}&order=view_count.desc`),
     sbGet(`detected_issues?run_id=eq.${runId}&order=created_at.asc`),
+    sbGet(`funnel_daily?run_id=eq.${runId}&order=id.asc`),
   ]);
 
   const todaySum = dau.reduce((s,r)=>s+r.today_count,0);
@@ -843,6 +867,38 @@ async function loadRun(runId, meta) {
         <div class="delta neu">${tours.length}개 투어</div>
       </div>
     </div>
+    ${funnel.length ? (() => {
+      const steps = funnel;
+      const stepHtml = steps.map((s, i) => {
+        const delta = s.prev_count > 0 ? ((s.today_count - s.prev_count) / s.prev_count * 100) : null;
+        const deltaHtml = delta !== null
+          ? `<div class="funnel-delta ${delta >= 0 ? 'up' : 'down'}">${delta >= 0 ? '▲' : '▼'} ${Math.abs(delta).toFixed(1)}%</div>`
+          : `<div class="funnel-delta neu">— 전일 없음</div>`;
+        return `
+          <div class="funnel-step">
+            <div class="funnel-step-num">STEP ${i + 1}</div>
+            <div class="funnel-step-label">${s.step_label}</div>
+            <div class="funnel-count">${s.today_count.toLocaleString()}</div>
+            <div class="funnel-prev">전일 ${s.prev_count.toLocaleString()}건</div>
+            ${deltaHtml}
+          </div>`;
+      }).join('');
+      const convHtml = steps.slice(0, -1).map((s, i) => {
+        const next = steps[i + 1];
+        const rate = s.today_count > 0 ? (next.today_count / s.today_count * 100).toFixed(1) : '—';
+        return `
+          <div class="funnel-conv">
+            <div class="funnel-conv-label">${s.step_label} → ${next.step_label}</div>
+            <div class="funnel-conv-val">${rate}%</div>
+          </div>`;
+      }).join('');
+      return `
+        <div class="funnel-card">
+          <h3>🔀 구매 퍼널 — 오늘 vs 전일</h3>
+          <div class="funnel-steps">${stepHtml}</div>
+          <div class="funnel-conv-row">${convHtml}</div>
+        </div>`;
+    })() : ''}
     <div class="row-full">
       <div class="chart-card">
         <h3>📈 시간별 활성 사용자 — 오늘 vs 전일</h3>
