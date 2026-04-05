@@ -140,6 +140,33 @@ tr:last-child td{border-bottom:none;}
 
 footer{text-align:center;color:var(--muted2);font-size:10px;margin-top:20px;padding-bottom:14px;}
 
+/* ── 아코디언 ── */
+.accordion-header{display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none;padding:4px 0;}
+.accordion-header:hover .accordion-arrow{color:var(--text);}
+.accordion-arrow{font-size:11px;color:var(--muted2);transition:transform .2s;flex-shrink:0;margin-left:8px;}
+.accordion-arrow.open{transform:rotate(180deg);}
+.accordion-body{overflow:hidden;max-height:0;transition:max-height .25s ease;}
+.accordion-body.open{max-height:9999px;}
+
+/* 이슈 아코디언 */
+.issue-item{display:flex;gap:10px;padding:9px 0;border-bottom:1px solid var(--border);font-size:12px;flex-direction:column;}
+.issue-item:last-child{border-bottom:none;padding-bottom:0;}
+.issue-item-header{display:flex;align-items:center;gap:8px;cursor:pointer;}
+.issue-item-header:hover .accordion-arrow{color:var(--text);}
+.issue-item-body{padding:6px 0 2px 0;display:none;}
+.issue-item-body.open{display:block;}
+
+/* 긴급배너 아코디언 */
+.alert-banner .banner-toggle{display:flex;align-items:center;justify-content:space-between;cursor:pointer;}
+.alert-banner .banner-body{overflow:hidden;max-height:0;transition:max-height .25s ease;margin-top:0;}
+.alert-banner .banner-body.open{max-height:9999px;margin-top:8px;}
+
+/* 투어 더보기 */
+.tour-row-hidden{display:none;}
+.tour-row-hidden.show{display:table-row;}
+#tour-more-btn{width:100%;margin-top:10px;padding:7px;background:var(--card2);border:1px solid var(--border);border-radius:7px;color:var(--muted);font-size:11px;cursor:pointer;}
+#tour-more-btn:hover{background:var(--border);color:var(--text);}
+
 /* ── 삭제 버튼 ── */
 .run-item{position:relative;}
 .run-delete-btn{
@@ -365,6 +392,34 @@ async function confirmDelete() {
 document.getElementById('delete-modal').addEventListener('click', e => {
   if (e.target.id === 'delete-modal') closeDeleteModal();
 });
+
+// ── 아코디언 토글 함수 ────────────────────────────────────────────────
+function toggleBanner(el) {
+  const body  = el.nextElementSibling;
+  const arrow = el.querySelector('.accordion-arrow');
+  const isOpen = body.classList.toggle('open');
+  arrow.classList.toggle('open', isOpen);
+  el.querySelector('.atitle').textContent = isOpen
+    ? el.querySelector('.atitle').textContent.replace('펼치기', '접기')
+    : el.querySelector('.atitle').textContent.replace('접기', '펼치기');
+}
+
+function toggleIssue(el) {
+  const body  = el.nextElementSibling;
+  const arrow = el.querySelector('.accordion-arrow');
+  const isOpen = body.classList.toggle('open');
+  arrow.classList.toggle('open', isOpen);
+}
+
+function toggleTours(btn) {
+  const rows   = btn.closest('.table-card').querySelectorAll('.tour-row-hidden');
+  const isOpen = btn.dataset.open === 'true';
+  rows.forEach(r => r.classList.toggle('show', !isOpen));
+  btn.dataset.open  = !isOpen;
+  btn.textContent   = !isOpen
+    ? `▲ 접기`
+    : `▼ 나머지 ${rows.length}개 투어 더 보기`;
+}
 
 // ── 파일 상태 ────────────────────────────────────────────────────────
 let files = { au: null, ev: null };
@@ -742,8 +797,13 @@ async function loadRun(runId, meta) {
 
   const critBanner = crits.length ? `
     <div class="alert-banner">
-      <div class="atitle">🚨 긴급 이슈 ${crits.length}건</div>
-      <div class="abody">${crits.map(i=>`<strong>${i.title}</strong><br>${i.description}`).join('<br><br>')}</div>
+      <div class="banner-toggle" onclick="toggleBanner(this)">
+        <div class="atitle" style="margin-bottom:0;">🚨 긴급 이슈 ${crits.length}건 — 클릭해서 펼치기</div>
+        <span class="accordion-arrow">▼</span>
+      </div>
+      <div class="banner-body">
+        <div class="abody">${crits.map(i=>`<strong>${i.title}</strong><br>${i.description}`).join('<br><br>')}</div>
+      </div>
     </div>` : '';
 
   const autoTag = isAutoRun(meta.label||'')
@@ -797,15 +857,18 @@ async function loadRun(runId, meta) {
     <div class="row2">
       <div class="issue-card">
         <h3>🔍 감지된 이슈 (${issues.length}건)</h3>
-        ${issues.length ? issues.map(i=>`
+        ${issues.length ? issues.map((i,idx)=>`
           <div class="issue-item">
-            <span class="badge ${i.severity==='critical'?'crit':i.severity==='warning'?'warn':'info'}">
-              ${i.severity==='critical'?'🚨 긴급':i.severity==='warning'?'⚠️ 주의':'ℹ️ 정보'}
-            </span>
-            <div>
-              <div style="font-weight:600;font-size:12px;">${i.title}</div>
+            <div class="issue-item-header" onclick="toggleIssue(this)">
+              <span class="badge ${i.severity==='critical'?'crit':i.severity==='warning'?'warn':'info'}">
+                ${i.severity==='critical'?'🚨 긴급':i.severity==='warning'?'⚠️ 주의':'ℹ️ 정보'}
+              </span>
+              <div style="font-weight:600;font-size:12px;flex:1;">${i.title}</div>
+              <span class="accordion-arrow">▼</span>
+            </div>
+            <div class="issue-item-body">
               <div class="issue-detail">${i.description||''}</div>
-              ${i.affected_user_id?`<div class="issue-detail">영향 유저: <code style="background:var(--card2);padding:1px 4px;border-radius:3px;">#${i.affected_user_id}</code></div>`:''}
+              ${i.affected_user_id?`<div class="issue-detail" style="margin-top:4px;">영향 유저: <code style="background:var(--card2);padding:1px 4px;border-radius:3px;">#${i.affected_user_id}</code></div>`:''}
             </div>
           </div>`).join('') : '<div style="color:var(--muted);font-size:12px;padding:8px 0;">감지된 이슈 없음 ✅</div>'}
       </div>
@@ -813,14 +876,15 @@ async function loadRun(runId, meta) {
         <h3>🗺 조회된 투어</h3>
         <table>
           <thead><tr><th>투어명</th><th>조회</th><th>가격</th></tr></thead>
-          <tbody>${tours.length ? tours.map(t=>`
-            <tr>
+          <tbody>${tours.length ? tours.map((t,idx)=>`
+            <tr class="${idx >= 5 ? 'tour-row-hidden' : ''}">
               <td><span style="color:var(--muted);font-size:10px;">#${t.tour_id}</span><br>${t.tour_name||'-'}</td>
               <td><strong>${t.view_count}</strong></td>
               <td>${t.price?t.price.toLocaleString()+'원':'-'}</td>
             </tr>`).join('') : '<tr><td colspan="3" style="color:var(--muted);text-align:center;">데이터 없음</td></tr>'}
           </tbody>
         </table>
+        ${tours.length > 5 ? `<button id="tour-more-btn" onclick="toggleTours(this)">▼ 나머지 ${tours.length - 5}개 투어 더 보기</button>` : ''}
       </div>
     </div>
     <footer>투어라이브 대시보드 · Supabase · ${new Date(meta.created_at).toLocaleString('ko-KR')}</footer>
