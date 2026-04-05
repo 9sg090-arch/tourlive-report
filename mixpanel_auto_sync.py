@@ -235,7 +235,8 @@ def calc_funnel(raw_today: list[dict], raw_prev: list[dict]) -> list[dict]:
             "today_count": today_counts.get(event_name, 0),
             "prev_count":  prev_counts.get(event_name, 0),
         })
-    print(f"  ✅ 퍼널 집계 완료: {[f'{r[\"step_label\"]}({r[\"today_count\"]})' for r in rows]}")
+    summary = [f"{r['step_label']}({r['today_count']})" for r in rows]
+    print(f"  ✅ 퍼널 집계 완료: {summary}")
     return rows
 
 
