@@ -70,7 +70,7 @@ def fetch_raw_events() -> list[dict]:
     """어제 하루치 원시 이벤트를 Export API로 가져옵니다."""
     print(f"📡 Mixpanel Export API 호출 중 ({DATE_FROM} ~ {DATE_TO})…")
     resp = requests.get(
-        "https://data.mixpanel.com/api/2.0/export",
+      "https://data-eu.mixpanel.com/api/2.0/export"
         headers=MP_HEADERS,
         params={"from_date": DATE_FROM, "to_date": DATE_TO},
         stream=True,
