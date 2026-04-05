@@ -189,6 +189,28 @@ footer{text-align:center;color:var(--muted2);font-size:10px;margin-top:20px;padd
 .funnel-conv-label{font-size:10px;color:var(--muted);margin-bottom:3px;}
 .funnel-conv-val{font-size:15px;font-weight:700;color:var(--indigo);}
 
+/* ── 투어 상세 드릴다운 패널 ── */
+.funnel-step.clickable{cursor:pointer;border-radius:8px;transition:background .15s;}
+.funnel-step.clickable:hover{background:var(--card2);}
+.funnel-step.active{background:var(--card2);outline:2px solid var(--blue);outline-offset:2px;}
+#drilldown-panel{display:none;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px;margin-bottom:14px;}
+#drilldown-panel.open{display:block;}
+#drilldown-panel h3{font-size:12px;font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:8px;}
+#drilldown-close{margin-left:auto;background:none;border:none;color:var(--muted2);cursor:pointer;font-size:14px;padding:2px 6px;border-radius:4px;}
+#drilldown-close:hover{color:var(--text);background:var(--card2);}
+.prop-section{margin-bottom:18px;}
+.prop-section:last-child{margin-bottom:0;}
+.prop-section-title{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;}
+.prop-row{display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border);font-size:12px;}
+.prop-row:last-child{border-bottom:none;}
+.prop-name{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text);}
+.prop-bar-wrap{width:130px;height:8px;background:var(--card2);border-radius:4px;overflow:hidden;flex-shrink:0;}
+.prop-bar-today{height:100%;border-radius:4px;background:var(--blue);transition:width .3s;}
+.prop-bar-prev{height:100%;border-radius:4px;background:var(--muted2);transition:width .3s;margin-top:2px;}
+.prop-counts{font-size:10px;color:var(--muted);text-align:right;flex-shrink:0;width:90px;}
+.prop-delta{font-size:10px;font-weight:600;flex-shrink:0;width:44px;text-align:right;}
+.prop-delta.up{color:var(--green);}.prop-delta.down{color:var(--red);}.prop-delta.neu{color:var(--muted);}
+
 /* ── 삭제 버튼 ── */
 .run-item{position:relative;}
 .run-delete-btn{
@@ -393,6 +415,7 @@ async function confirmDelete() {
       sbDelete('platform_stats',   `run_id=eq.${id}`),
       sbDelete('country_stats',    `run_id=eq.${id}`),
       sbDelete('tour_view_stats',  `run_id=eq.${id}`),
+      sbDelete('tour_view_props',  `run_id=eq.${id}`),
     ]);
     await sbDelete('analysis_runs', `id=eq.${id}`);
 
@@ -442,6 +465,72 @@ function toggleTours(btn) {
   btn.textContent   = !isOpen
     ? `▲ 접기`
     : `▼ 나머지 ${rows.length}개 투어 더 보기`;
+}
+
+// ── 투어 상세 드릴다운 ─────────────────────────────────────────────────
+let _drilldownRunId = null;
+
+function closeDrilldown() {
+  const panel = document.getElementById('drilldown-panel');
+  if (panel) panel.classList.remove('open');
+  document.querySelectorAll('.funnel-step.active').forEach(el => el.classList.remove('active'));
+}
+
+async function openTourDrilldown(stepEl) {
+  const panel = document.getElementById('drilldown-panel');
+  if (!panel || !_drilldownRunId) return;
+
+  // 토글: 이미 열려있으면 닫기
+  if (stepEl.classList.contains('active')) { closeDrilldown(); return; }
+  document.querySelectorAll('.funnel-step.active').forEach(el => el.classList.remove('active'));
+  stepEl.classList.add('active');
+  panel.classList.add('open');
+  document.getElementById('drilldown-body').innerHTML = '<div style="color:var(--muted);font-size:12px;padding:8px 0;">로딩 중…</div>';
+
+  const props = await sbGet(`tour_view_props?run_id=eq.${_drilldownRunId}&order=today_count.desc`);
+
+  const cities    = props.filter(r => r.prop_type === 'city');
+  const countries = props.filter(r => r.prop_type === 'country');
+  const tours     = props.filter(r => r.prop_type === 'tour');
+
+  function renderPropSection(title, rows) {
+    if (!rows.length) return '';
+    const maxVal = Math.max(...rows.map(r => Math.max(r.today_count, r.prev_count)), 1);
+    const items = rows.map(r => {
+      const delta = r.prev_count > 0 ? ((r.today_count - r.prev_count) / r.prev_count * 100) : null;
+      const dClass = delta === null ? 'neu' : delta >= 0 ? 'up' : 'down';
+      const dText  = delta === null ? '—' : (delta >= 0 ? '▲' : '▼') + Math.abs(delta).toFixed(1) + '%';
+      const todayW = Math.round(r.today_count / maxVal * 100);
+      const prevW  = Math.round(r.prev_count  / maxVal * 100);
+      return `
+        <div class="prop-row">
+          <div class="prop-name" title="${r.prop_value}">${r.prop_value || '(미확인)'}</div>
+          <div style="flex-shrink:0;width:140px;">
+            <div class="prop-bar-wrap"><div class="prop-bar-today" style="width:${todayW}%"></div></div>
+            <div class="prop-bar-wrap" style="margin-top:3px;"><div class="prop-bar-prev" style="width:${prevW}%"></div></div>
+          </div>
+          <div class="prop-counts">
+            <span style="color:var(--blue);font-weight:600;">${r.today_count.toLocaleString()}</span>
+            <span style="color:var(--muted);"> / ${r.prev_count.toLocaleString()}</span>
+          </div>
+          <div class="prop-delta ${dClass}">${dText}</div>
+        </div>`;
+    }).join('');
+    return `<div class="prop-section"><div class="prop-section-title">${title}</div>${items}</div>`;
+  }
+
+  const legend = `<div style="display:flex;gap:14px;margin-bottom:12px;font-size:10px;color:var(--muted);">
+    <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--blue);margin-right:4px;vertical-align:middle;"></span>오늘</span>
+    <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--muted2);margin-right:4px;vertical-align:middle;"></span>전일</span>
+  </div>`;
+
+  document.getElementById('drilldown-body').innerHTML =
+    (props.length === 0
+      ? '<div style="color:var(--muted);font-size:12px;padding:8px 0;">데이터 없음 — 다음 자동 동기화 후 조회하세요.</div>'
+      : legend +
+        renderPropSection('🏙 도시별 조회', cities) +
+        renderPropSection('🌍 국가별 조회', countries) +
+        renderPropSection('🎫 투어별 조회', tours));
 }
 
 // ── 파일 상태 ────────────────────────────────────────────────────────
@@ -800,6 +889,8 @@ async function loadRun(runId, meta) {
   document.getElementById('empty-state').style.display = 'none';
   document.getElementById('content').style.display = 'none';
   clearCharts();
+  closeDrilldown();
+  _drilldownRunId = runId;
 
   const [dau,evts,plat,ctry,tours,issues,funnel] = await Promise.all([
     sbGet(`dau_hourly?run_id=eq.${runId}&order=hour.asc`),
@@ -874,9 +965,10 @@ async function loadRun(runId, meta) {
         const deltaHtml = delta !== null
           ? `<div class="funnel-delta ${delta >= 0 ? 'up' : 'down'}">${delta >= 0 ? '▲' : '▼'} ${Math.abs(delta).toFixed(1)}%</div>`
           : `<div class="funnel-delta neu">— 전일 없음</div>`;
+        const isClickable = s.step === 'tour_view';
         return `
-          <div class="funnel-step">
-            <div class="funnel-step-num">STEP ${i + 1}</div>
+          <div class="funnel-step${isClickable ? ' clickable' : ''}" ${isClickable ? `onclick="openTourDrilldown(this)"` : ''}>
+            <div class="funnel-step-num">STEP ${i + 1}${isClickable ? ' 🔍' : ''}</div>
             <div class="funnel-step-label">${s.step_label}</div>
             <div class="funnel-count">${s.today_count.toLocaleString()}</div>
             <div class="funnel-prev">전일 ${s.prev_count.toLocaleString()}건</div>
@@ -897,6 +989,12 @@ async function loadRun(runId, meta) {
           <h3>🔀 구매 퍼널 (투어 상세 → 구매 완료) — 오늘 vs 전일</h3>
           <div class="funnel-steps">${stepHtml}</div>
           <div class="funnel-conv-row">${convHtml}</div>
+        </div>
+        <div id="drilldown-panel">
+          <h3>🗺 투어 상세 (PageView_Tour) 속성 분석 — 오늘 vs 전일
+            <button id="drilldown-close" onclick="closeDrilldown()">✕</button>
+          </h3>
+          <div id="drilldown-body"><div style="color:var(--muted);font-size:12px;">로딩 중…</div></div>
         </div>`;
     })() : ''}
     <div class="row-full">

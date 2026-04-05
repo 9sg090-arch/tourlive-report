@@ -206,7 +206,88 @@ def aggregate_events(raw: list[dict]) -> dict:
 
 
 # ──────────────────────────────────────────────
-# 4. 퍼널 집계 (투어 상세 → 구매 시작 → 콘텐츠 접근 → 재생)
+# 4. PageView_Tour 속성별 집계 (도시 / 국가 / 투어)
+# ──────────────────────────────────────────────
+def calc_tour_view_props(raw_today: list[dict], raw_prev: list[dict], top_n: int = 10) -> list[dict]:
+    """PageView_Tour 이벤트의 속성별(도시·국가·투어) 상위 N개를 집계합니다."""
+    def extract(raw: list[dict]) -> tuple[Counter, Counter, Counter, dict, dict]:
+        cities    = Counter()   # city_name → count
+        countries = Counter()   # country_name → count
+        tours     = Counter()   # tour_id → count
+        city_ids  = {}          # city_name → city_id
+        tour_names_map = {}     # tour_id → tour_name
+
+        for row in raw:
+            if row.get("event", "").strip() != "PageView_Tour":
+                continue
+            p = row.get("properties", {})
+
+            cname = p.get("cityName") or p.get("City_name") or p.get("city_name") or ""
+            cid   = p.get("cityId")   or p.get("City_id")   or p.get("city_id")   or ""
+            ctry  = (p.get("countryName") or p.get("Country_name") or
+                     p.get("country_name") or p.get("$country_code") or "")
+            tid   = str(p.get("tourId") or p.get("Tour_id") or p.get("tour_id") or "")
+            tname = p.get("tourName") or p.get("Tour_name") or p.get("tour_name") or ""
+
+            if cname:
+                cities[cname] += 1
+                if cid:
+                    city_ids[cname] = str(cid)
+            if ctry:
+                countries[ctry] += 1
+            if tid:
+                tours[tid] += 1
+                if tname:
+                    tour_names_map[tid] = tname
+
+        return cities, countries, tours, city_ids, tour_names_map
+
+    t_cities, t_countries, t_tours, t_city_ids, t_tour_names = extract(raw_today)
+    p_cities, p_countries, p_tours, _,            _           = extract(raw_prev)
+
+    rows = []
+
+    # 도시별
+    all_cities = set(list(t_cities.keys())[:top_n]) | set(list(p_cities.keys())[:top_n])
+    for name in sorted(all_cities, key=lambda x: -t_cities.get(x, 0))[:top_n]:
+        rows.append({
+            "prop_type":   "city",
+            "prop_value":  name,
+            "prop_id":     t_city_ids.get(name, ""),
+            "today_count": t_cities.get(name, 0),
+            "prev_count":  p_cities.get(name, 0),
+        })
+
+    # 국가별
+    all_ctry = set(list(t_countries.keys())[:top_n]) | set(list(p_countries.keys())[:top_n])
+    for name in sorted(all_ctry, key=lambda x: -t_countries.get(x, 0))[:top_n]:
+        rows.append({
+            "prop_type":   "country",
+            "prop_value":  name,
+            "prop_id":     "",
+            "today_count": t_countries.get(name, 0),
+            "prev_count":  p_countries.get(name, 0),
+        })
+
+    # 투어별
+    all_tours = set(list(t_tours.keys())[:top_n]) | set(list(p_tours.keys())[:top_n])
+    for tid in sorted(all_tours, key=lambda x: -t_tours.get(x, 0))[:top_n]:
+        rows.append({
+            "prop_type":   "tour",
+            "prop_value":  t_tour_names.get(tid, tid),
+            "prop_id":     tid,
+            "today_count": t_tours.get(tid, 0),
+            "prev_count":  p_tours.get(tid, 0),
+        })
+
+    print(f"  ✅ tour_view_props 집계 완료 — 도시 {sum(1 for r in rows if r['prop_type']=='city')}개 / "
+          f"국가 {sum(1 for r in rows if r['prop_type']=='country')}개 / "
+          f"투어 {sum(1 for r in rows if r['prop_type']=='tour')}개")
+    return rows
+
+
+# ──────────────────────────────────────────────
+# 5. 퍼널 집계 (투어 상세 → 구매 시작 → 콘텐츠 접근 → 재생)
 # ──────────────────────────────────────────────
 FUNNEL_STEPS = [
     ("tour_view",         "투어 상세",   "PageView_Tour"),
@@ -359,6 +440,10 @@ def main():
     print(f"  총 이벤트: {agg['total']:,}건 | 유니크 유저: {agg['unique_users']:,}명")
     print(f"  상위 이벤트: {', '.join(f'{k}({v})' for k,v in agg['event_counts'].most_common(5))}")
 
+    # ─ PageView_Tour 속성별 집계
+    print("🗺  투어 상세 속성 집계 중…")
+    tour_prop_rows = calc_tour_view_props(raw_today_only, raw_prev_only)
+
     # ─ 퍼널 집계
     print("🔀 퍼널 집계 중…")
     funnel_rows = calc_funnel(raw_today_only, raw_prev_only)
@@ -454,6 +539,12 @@ def main():
     fn_rows = [{**r, "run_id": run_id} for r in funnel_rows]
     sb_insert("funnel_daily", fn_rows)
     print(f"  ✅ funnel_daily 저장 ({len(fn_rows)}행)")
+
+    # tour_view_props
+    tp_rows = [{**r, "run_id": run_id} for r in tour_prop_rows]
+    if tp_rows:
+        sb_insert("tour_view_props", tp_rows)
+        print(f"  ✅ tour_view_props 저장 ({len(tp_rows)}행)")
 
     print("=" * 50)
     print(f"✅ 자동 동기화 완료! run_id={run_id}")
