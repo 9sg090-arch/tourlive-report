@@ -36,6 +36,7 @@ MP_SECRET     = os.environ.get("MIXPANEL_PROJECT_SECRET", "")
 # Mixpanel Export API는 보통 24~48시간 딜레이 있음 → 2일 전 ~ 2일 전이 안전
 LOOKBACK      = int(os.environ.get("LOOKBACK_DAYS", "3"))
 DATE_TO       = (NOW - timedelta(days=2)).strftime("%Y-%m-%d")   # 2일 전 (딜레이 감안)
+DATE_PREV     = (NOW - timedelta(days=3)).strftime("%Y-%m-%d")   # 전일 비교용 (3일 전)
 DATE_FROM     = (NOW - timedelta(days=LOOKBACK + 1)).strftime("%Y-%m-%d")
 
 # Supabase — 환경변수 우선, 없으면 기존 하드코딩 값 폴백
@@ -66,13 +67,13 @@ print(f"📅 동기화 기간: {DATE_FROM} ~ {DATE_TO}")
 # ──────────────────────────────────────────────
 # 1. Mixpanel Export API — 원시 이벤트 수집
 # ──────────────────────────────────────────────
-def fetch_raw_events() -> list[dict]:
-    """어제 하루치 원시 이벤트를 Export API로 가져옵니다."""
-    print(f"📡 Mixpanel Export API 호출 중 ({DATE_FROM} ~ {DATE_TO})…")
+def fetch_raw_events(date_from: str = DATE_FROM, date_to: str = DATE_TO) -> list[dict]:
+    """지정한 기간의 원시 이벤트를 Export API로 가져옵니다."""
+    print(f"📡 Mixpanel Export API 호출 중 ({date_from} ~ {date_to})…")
     resp = requests.get(
         "https://data-eu.mixpanel.com/api/2.0/export",
         headers=MP_HEADERS,
-        params={"from_date": DATE_FROM, "to_date": DATE_TO},
+        params={"from_date": date_from, "to_date": date_to},
         stream=True,
         timeout=180,
     )
@@ -97,8 +98,8 @@ def fetch_raw_events() -> list[dict]:
 # ──────────────────────────────────────────────
 def calc_hourly_dau(raw: list[dict]) -> tuple[dict, dict]:
     """Export API 원시 이벤트에서 날짜별·시간별 유니크 유저 수를 계산합니다.
-    오늘(DATE_TO) 데이터를 today, 하루 전 데이터를 prev로 반환합니다."""
-    prev_date = (datetime.strptime(DATE_TO, "%Y-%m-%d") - timedelta(days=1)).strftime("%Y-%m-%d")
+    오늘(DATE_TO) 데이터를 today, 하루 전(DATE_PREV) 데이터를 prev로 반환합니다."""
+    prev_date = DATE_PREV
     # {date: {hour: set(distinct_id)}}
     buckets: dict[str, dict[int, set]] = {}
 
@@ -337,32 +338,23 @@ def main():
     print(f"   {NOW.strftime('%Y-%m-%d %H:%M:%S KST')}")
     print("=" * 50)
 
-    # ─ 데이터 수집
-    raw_events = fetch_raw_events()
+    # ─ 데이터 수집 (오늘/전일 별도 호출 → prev 데이터 확실 보장)
+    print(f"📅 오늘: {DATE_TO} / 전일: {DATE_PREV}")
+    raw_today_only = fetch_raw_events(date_from=DATE_TO,   date_to=DATE_TO)
+    raw_prev_only  = fetch_raw_events(date_from=DATE_PREV, date_to=DATE_PREV)
 
-    if not raw_events:
-        print("⚠️  수집된 데이터가 없습니다. 종료.")
+    if not raw_today_only:
+        print("⚠️  오늘 데이터가 없습니다. 종료.")
         return
 
-    # ─ 날짜별 이벤트 분리 (퍼널 전일 비교용)
-    prev_date = (datetime.strptime(DATE_TO, "%Y-%m-%d") - timedelta(days=1)).strftime("%Y-%m-%d")
-    raw_today_only = []
-    raw_prev_only  = []
-    for row in raw_events:
-        ts = row.get("properties", {}).get("time", 0)
-        try:
-            dt = datetime.fromtimestamp(float(ts), tz=TZ)
-            date_str = dt.strftime("%Y-%m-%d")
-        except (ValueError, OSError):
-            continue
-        if date_str == DATE_TO:
-            raw_today_only.append(row)
-        elif date_str == prev_date:
-            raw_prev_only.append(row)
+    print(f"  ℹ️  오늘({DATE_TO}): {len(raw_today_only):,}건 / 전일({DATE_PREV}): {len(raw_prev_only):,}건")
+
+    # 전체 집계용 (오늘 + 전일 통합)
+    raw_events = raw_today_only + raw_prev_only
 
     # ─ 집계
     print("🔢 이벤트 집계 중…")
-    agg = aggregate_events(raw_events)
+    agg = aggregate_events(raw_today_only)   # 이벤트 통계는 오늘 기준
     dau_today, dau_prev = calc_hourly_dau(raw_events)
     print(f"  총 이벤트: {agg['total']:,}건 | 유니크 유저: {agg['unique_users']:,}명")
     print(f"  상위 이벤트: {', '.join(f'{k}({v})' for k,v in agg['event_counts'].most_common(5))}")
