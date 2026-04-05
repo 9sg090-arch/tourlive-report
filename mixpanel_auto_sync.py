@@ -212,7 +212,7 @@ FUNNEL_STEPS = [
     ("tour_view",         "투어 상세",   "PageView_Tour"),
     ("complete_purchase", "구매 완료",   "EventOn_CompletePurchase"),
     ("purchased_content", "콘텐츠 접근", "PageView_PurchasedContent"),
-    ("player",            "재생",        "EventOn_ClickTourTopPlay"),
+    ("player",            "재생",        "PageView_Player"),
 ]
 
 def calc_funnel(raw_today: list[dict], raw_prev: list[dict]) -> list[dict]:
