@@ -96,12 +96,15 @@ def fetch_raw_events(date_from: str = DATE_FROM, date_to: str = DATE_TO) -> list
 # ──────────────────────────────────────────────
 # 2. 원시 이벤트에서 시간별 DAU 계산 (Segmentation API 불필요)
 # ──────────────────────────────────────────────
-def calc_hourly_dau(raw: list[dict]) -> tuple[dict, dict]:
+def calc_hourly_dau(raw: list[dict]) -> tuple[dict, dict, int, int]:
     """Export API 원시 이벤트에서 날짜별·시간별 유니크 유저 수를 계산합니다.
-    오늘(DATE_TO) 데이터를 today, 하루 전(DATE_PREV) 데이터를 prev로 반환합니다."""
-    prev_date = DATE_PREV
-    # {date: {hour: set(distinct_id)}}
+    오늘(DATE_TO) 데이터를 today, 하루 전(DATE_PREV) 데이터를 prev로 반환합니다.
+
+    ※ 시간별 count는 차트 시각화용이고,
+      실제 DAU KPI는 daily_unique로 별도 반환합니다.
+    """
     buckets: dict[str, dict[int, set]] = {}
+    daily_unique: dict[str, set] = {}   # ← 날짜 단위 유니크 유저
 
     for row in raw:
         props = row.get("properties", {})
@@ -114,6 +117,7 @@ def calc_hourly_dau(raw: list[dict]) -> tuple[dict, dict]:
             date_str = dt.strftime("%Y-%m-%d")
             hour     = dt.hour
             buckets.setdefault(date_str, {}).setdefault(hour, set()).add(did)
+            daily_unique.setdefault(date_str, set()).add(did)   # ← 날짜 단위
         except (ValueError, OSError):
             pass
 
@@ -122,9 +126,15 @@ def calc_hourly_dau(raw: list[dict]) -> tuple[dict, dict]:
         return {h: len(users) for h, users in day_data.items()}
 
     today_dau = _to_count(DATE_TO)
-    prev_dau  = _to_count(prev_date)
-    print(f"  ✅ DAU — {DATE_TO}: {sum(today_dau.values()):,}명, {prev_date}: {sum(prev_dau.values()):,}명")
-    return today_dau, prev_dau
+    prev_dau  = _to_count(DATE_PREV)
+
+    # 실제 DAU (중복 제거)
+    real_dau_today = len(daily_unique.get(DATE_TO,   set()))
+    real_dau_prev  = len(daily_unique.get(DATE_PREV, set()))
+
+    print(f"  ✅ DAU (시간별 합산) — 오늘: {sum(today_dau.values()):,} / 전일: {sum(prev_dau.values()):,}")
+    print(f"  ✅ DAU (실제 유니크) — 오늘: {real_dau_today:,} / 전일: {real_dau_prev:,}")
+    return today_dau, prev_dau, real_dau_today, real_dau_prev
 
 
 # ──────────────────────────────────────────────
@@ -325,7 +335,8 @@ def calc_funnel(raw_today: list[dict], raw_prev: list[dict]) -> list[dict]:
 # ──────────────────────────────────────────────
 # 5. 이슈 자동 감지
 # ──────────────────────────────────────────────
-def detect_issues(agg: dict, dau_today: dict, dau_prev: dict) -> list[dict]:
+def detect_issues(agg: dict, dau_today: dict, dau_prev: dict,
+                  real_dau_today: int = 0, real_dau_prev: int = 0) -> list[dict]:
     issues = []
 
     # 1. 로그인 루프
@@ -352,9 +363,9 @@ def detect_issues(agg: dict, dau_today: dict, dau_prev: dict) -> list[dict]:
                 }),
             })
 
-    # 2. DAU 급락
-    today_sum = sum(dau_today.values())
-    prev_sum  = sum(dau_prev.values())
+    # 2. DAU 급락 — 실제 유니크 유저 기준으로 비교 (시간별 합산은 중복 포함)
+    today_sum = real_dau_today if real_dau_today > 0 else sum(dau_today.values())
+    prev_sum  = real_dau_prev  if real_dau_prev  > 0 else sum(dau_prev.values())
     if prev_sum > 0:
         drop_pct = (today_sum - prev_sum) / prev_sum * 100
         if drop_pct < -10:
@@ -436,7 +447,7 @@ def main():
     # ─ 집계
     print("🔢 이벤트 집계 중…")
     agg = aggregate_events(raw_today_only)   # 이벤트 통계는 오늘 기준
-    dau_today, dau_prev = calc_hourly_dau(raw_events)
+    dau_today, dau_prev, real_dau_today, real_dau_prev = calc_hourly_dau(raw_events)
     print(f"  총 이벤트: {agg['total']:,}건 | 유니크 유저: {agg['unique_users']:,}명")
     print(f"  상위 이벤트: {', '.join(f'{k}({v})' for k,v in agg['event_counts'].most_common(5))}")
 
@@ -450,7 +461,7 @@ def main():
 
     # ─ 이슈 감지
     print("🔍 이슈 감지 중…")
-    issues = detect_issues(agg, dau_today, dau_prev)
+    issues = detect_issues(agg, dau_today, dau_prev, real_dau_today, real_dau_prev)
     print(f"  감지된 이슈: {len(issues)}건")
 
     # ─ Supabase 저장
@@ -464,7 +475,7 @@ def main():
         "label":        label,
         "total_events": agg["total"],
         "unique_users": agg["unique_users"],
-        "notes":        f"[API 자동] 이슈 {len(issues)}건 감지 | {NOW.strftime('%Y-%m-%d %H:%M KST')}",
+        "notes":        f"[API 자동] 이슈 {len(issues)}건 감지 | DAU {real_dau_today:,}명 | {NOW.strftime('%Y-%m-%d %H:%M KST')}",
     }])
     if not run_res:
         print("❌ analysis_runs 저장 실패. 중단.")
