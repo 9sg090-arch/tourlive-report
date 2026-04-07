@@ -67,13 +67,24 @@ print(f"📅 동기화 기간: {DATE_FROM} ~ {DATE_TO}")
 # ──────────────────────────────────────────────
 # 1. Mixpanel Export API — 원시 이벤트 수집
 # ──────────────────────────────────────────────
-def fetch_raw_events(date_from: str = DATE_FROM, date_to: str = DATE_TO) -> list[dict]:
-    """지정한 기간의 원시 이벤트를 Export API로 가져옵니다."""
-    print(f"📡 Mixpanel Export API 호출 중 ({date_from} ~ {date_to})…")
+def fetch_raw_events(date_from: str = DATE_FROM, date_to: str = DATE_TO,
+                     event_name: str | None = None) -> list[dict]:
+    """지정한 기간의 원시 이벤트를 Export API로 가져옵니다.
+
+    Args:
+        date_from: 조회 시작일 (YYYY-MM-DD)
+        date_to:   조회 종료일 (YYYY-MM-DD)
+        event_name: 특정 이벤트만 필터링할 경우 이벤트명 전달 (None이면 전체 이벤트)
+    """
+    label = f'"{event_name}" 이벤트만' if event_name else "전체 이벤트"
+    print(f"📡 Mixpanel Export API 호출 중 ({date_from} ~ {date_to}, {label})…")
+    params: dict = {"from_date": date_from, "to_date": date_to}
+    if event_name:
+        params["event"] = json.dumps([event_name])
     resp = requests.get(
         "https://data-eu.mixpanel.com/api/2.0/export",
         headers=MP_HEADERS,
-        params={"from_date": date_from, "to_date": date_to},
+        params=params,
         stream=True,
         timeout=180,
     )
@@ -94,14 +105,15 @@ def fetch_raw_events(date_from: str = DATE_FROM, date_to: str = DATE_TO) -> list
 
 
 # ──────────────────────────────────────────────
-# 2. 원시 이벤트에서 시간별 DAU 계산 (Segmentation API 불필요)
+# 2. App Session 이벤트 기반 시간별 DAU 계산
 # ──────────────────────────────────────────────
 def calc_hourly_dau(raw: list[dict]) -> tuple[dict, dict, int, int]:
-    """Export API 원시 이벤트에서 날짜별·시간별 유니크 유저 수를 계산합니다.
+    """App Session 이벤트만 담긴 원시 데이터에서 날짜별·시간별 유니크 유저 수를 계산합니다.
     오늘(DATE_TO) 데이터를 today, 하루 전(DATE_PREV) 데이터를 prev로 반환합니다.
 
-    ※ 시간별 count는 차트 시각화용이고,
-      실제 DAU KPI는 daily_unique로 별도 반환합니다.
+    ※ 입력 raw는 반드시 "App Session" 이벤트만 필터링된 데이터여야 합니다.
+      - 시간별 count: 각 시간대별 유니크 distinct_id 수 (차트 시각화용)
+      - 실제 DAU KPI: 하루 전체 유니크 distinct_id 수 (daily_unique)
     """
     buckets: dict[str, dict[int, set]] = {}
     daily_unique: dict[str, set] = {}   # ← 날짜 단위 유니크 유저
@@ -430,7 +442,7 @@ def main():
     print(f"   {NOW.strftime('%Y-%m-%d %H:%M:%S KST')}")
     print("=" * 50)
 
-    # ─ 데이터 수집 (오늘/전일 별도 호출 → prev 데이터 확실 보장)
+    # ─ 전체 이벤트 수집 (이벤트 통계·투어 조회·퍼널·이슈 감지용)
     print(f"📅 오늘: {DATE_TO} / 전일: {DATE_PREV}")
     raw_today_only = fetch_raw_events(date_from=DATE_TO,   date_to=DATE_TO)
     raw_prev_only  = fetch_raw_events(date_from=DATE_PREV, date_to=DATE_PREV)
@@ -441,13 +453,16 @@ def main():
 
     print(f"  ℹ️  오늘({DATE_TO}): {len(raw_today_only):,}건 / 전일({DATE_PREV}): {len(raw_prev_only):,}건")
 
-    # 전체 집계용 (오늘 + 전일 통합)
-    raw_events = raw_today_only + raw_prev_only
+    # ─ App Session 이벤트 별도 수집 (DAU 계산 전용)
+    print("📡 App Session 이벤트 수집 중 (DAU 전용)…")
+    session_today = fetch_raw_events(date_from=DATE_TO,   date_to=DATE_TO,   event_name="App Session")
+    session_prev  = fetch_raw_events(date_from=DATE_PREV, date_to=DATE_PREV, event_name="App Session")
+    print(f"  ℹ️  App Session — 오늘: {len(session_today):,}건 / 전일: {len(session_prev):,}건")
 
     # ─ 집계
     print("🔢 이벤트 집계 중…")
-    agg = aggregate_events(raw_today_only)   # 이벤트 통계는 오늘 기준
-    dau_today, dau_prev, real_dau_today, real_dau_prev = calc_hourly_dau(raw_events)
+    agg = aggregate_events(raw_today_only)   # 이벤트 통계는 전체 이벤트·오늘 기준
+    dau_today, dau_prev, real_dau_today, real_dau_prev = calc_hourly_dau(session_today + session_prev)
     print(f"  총 이벤트: {agg['total']:,}건 | 유니크 유저: {agg['unique_users']:,}명")
     print(f"  상위 이벤트: {', '.join(f'{k}({v})' for k,v in agg['event_counts'].most_common(5))}")
 
