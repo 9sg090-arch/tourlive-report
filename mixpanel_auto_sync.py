@@ -453,11 +453,11 @@ def main():
 
     print(f"  ℹ️  오늘({DATE_TO}): {len(raw_today_only):,}건 / 전일({DATE_PREV}): {len(raw_prev_only):,}건")
 
-    # ─ App Session 이벤트 별도 수집 (DAU 계산 전용)
-    print("📡 App Session 이벤트 수집 중 (DAU 전용)…")
-    session_today = fetch_raw_events(date_from=DATE_TO,   date_to=DATE_TO,   event_name="App Session")
-    session_prev  = fetch_raw_events(date_from=DATE_PREV, date_to=DATE_PREV, event_name="App Session")
-    print(f"  ℹ️  App Session — 오늘: {len(session_today):,}건 / 전일: {len(session_prev):,}건")
+    # ─ App Session 이벤트 필터링 (DAU 계산 전용 — 이미 수집한 전체 데이터에서 추출)
+    DAU_EVENT = "App Session"
+    session_today = [r for r in raw_today_only if r.get("event", "").strip() == DAU_EVENT]
+    session_prev  = [r for r in raw_prev_only  if r.get("event", "").strip() == DAU_EVENT]
+    print(f"  ℹ️  {DAU_EVENT} — 오늘: {len(session_today):,}건 / 전일: {len(session_prev):,}건")
 
     # ─ 집계
     print("🔢 이벤트 집계 중…")
