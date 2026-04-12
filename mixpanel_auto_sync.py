@@ -454,7 +454,7 @@ def main():
     print(f"  ℹ️  오늘({DATE_TO}): {len(raw_today_only):,}건 / 전일({DATE_PREV}): {len(raw_prev_only):,}건")
 
     # ─ App Session 이벤트 필터링 (DAU 계산 전용 — 이미 수집한 전체 데이터에서 추출)
-    DAU_EVENT = "App Session"
+    DAU_EVENT = "$ae_session"
     session_today = [r for r in raw_today_only if r.get("event", "").strip() == DAU_EVENT]
     session_prev  = [r for r in raw_prev_only  if r.get("event", "").strip() == DAU_EVENT]
     print(f"  ℹ️  {DAU_EVENT} — 오늘: {len(session_today):,}건 / 전일: {len(session_prev):,}건")
