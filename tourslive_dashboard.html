@@ -21,6 +21,29 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,'Pretendar
 #sidebar-header{padding:18px 16px 12px;border-bottom:1px solid var(--border);}
 #sidebar-header .logo{font-size:14px;font-weight:700;}
 #sidebar-header .sub{font-size:10px;color:var(--muted2);margin-top:2px;}
+#sidebar-header .redash-row{display:flex;align-items:center;justify-content:space-between;margin-top:8px;}
+#redash-status{font-size:10px;color:var(--muted2);}
+#redash-status.connected{color:var(--green);}
+#redash-setting-btn{font-size:10px;background:none;border:1px solid var(--border);color:var(--muted);padding:2px 8px;border-radius:5px;cursor:pointer;}
+#redash-setting-btn:hover{border-color:var(--blue);color:var(--blue);}
+
+/* ── Redash 설정 모달 ── */
+#redash-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:200;align-items:center;justify-content:center;}
+#redash-modal.open{display:flex;}
+#redash-box{background:var(--card);border:1px solid var(--border);border-radius:14px;width:480px;max-width:95vw;padding:28px;position:relative;}
+#redash-box h2{font-size:15px;font-weight:700;margin-bottom:4px;}
+#redash-box .rdesc{font-size:11px;color:var(--muted);margin-bottom:18px;}
+.rfield{margin-bottom:12px;}
+.rfield label{display:block;font-size:11px;color:var(--muted);margin-bottom:4px;}
+.rfield input{width:100%;background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:8px 11px;color:var(--text);font-size:12px;outline:none;}
+.rfield input:focus{border-color:var(--blue);}
+.rfield input::placeholder{color:var(--muted2);}
+.r-actions{display:flex;gap:8px;margin-top:16px;}
+.r-save{flex:1;padding:9px;border-radius:8px;background:var(--blue);color:#fff;font-size:12px;font-weight:700;border:none;cursor:pointer;}
+.r-save:hover{background:#2563eb;}
+.r-cancel{padding:9px 16px;border-radius:8px;background:none;border:1px solid var(--border);color:var(--muted);font-size:12px;cursor:pointer;}
+.r-hint{font-size:10px;color:var(--muted2);margin-top:10px;line-height:1.6;}
+.r-tag{display:inline-block;background:#10b98122;color:var(--green);padding:1px 5px;border-radius:3px;font-size:9px;font-weight:600;vertical-align:middle;margin-left:4px;}
 #run-list{flex:1;overflow-y:auto;padding:8px 0;}
 .run-item{padding:10px 16px;cursor:pointer;border-left:3px solid transparent;transition:all .15s;}
 .run-item:hover{background:var(--card2);}
@@ -134,6 +157,10 @@ footer{text-align:center;color:var(--muted2);font-size:10px;margin-top:20px;padd
   <div id="sidebar-header">
     <div class="logo">🌏 투어라이브 대시보드</div>
     <div class="sub">분석 히스토리</div>
+    <div class="redash-row">
+      <span id="redash-status">● Redash 미연결</span>
+      <button id="redash-setting-btn" onclick="openRedash()">⚙ Redash 설정</button>
+    </div>
   </div>
   <div id="run-list">
     <div style="padding:16px;text-align:center;color:var(--muted2);font-size:11px;">
@@ -154,6 +181,36 @@ footer{text-align:center;color:var(--muted2);font-size:10px;margin-top:20px;padd
     <button onclick="openUpload()" style="margin-top:8px;padding:9px 18px;background:var(--blue);color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;">＋ CSV 업로드</button>
   </div>
   <div id="content" style="display:none;"></div>
+</div>
+
+<!-- Redash 설정 모달 -->
+<div id="redash-modal">
+  <div id="redash-box">
+    <button class="close-btn" onclick="closeRedash()">✕</button>
+    <h2>⚙️ Redash 연동 설정</h2>
+    <div class="rdesc">DAU 데이터를 Redash 쿼리에서 직접 가져옵니다. 설정은 브라우저에 저장됩니다.</div>
+    <div class="rfield">
+      <label>Redash URL</label>
+      <input type="text" id="r-url" placeholder="https://redash.yourcompany.com" />
+    </div>
+    <div class="rfield">
+      <label>API Key</label>
+      <input type="password" id="r-key" placeholder="Redash → 프로필 → API Keys" />
+    </div>
+    <div class="rfield">
+      <label>DAU Query ID</label>
+      <input type="number" id="r-qid" placeholder="예: 42  (date, dau 컬럼을 반환하는 쿼리)" />
+    </div>
+    <div class="r-hint">
+      💡 쿼리 결과에 <code style="background:var(--card2);padding:1px 4px;border-radius:3px;">date</code> (YYYY-MM-DD) 와 <code style="background:var(--card2);padding:1px 4px;border-radius:3px;">dau</code> (또는 <code style="background:var(--card2);padding:1px 4px;border-radius:3px;">active_users</code>, <code style="background:var(--card2);padding:1px 4px;border-radius:3px;">count</code>) 컬럼이 있어야 합니다.<br>
+      연결하면 각 분석 run의 DAU가 Redash 데이터 기준으로 표시됩니다.
+    </div>
+    <div class="r-actions">
+      <button class="r-save" onclick="saveRedash()">저장 &amp; 연결</button>
+      <button class="r-cancel" onclick="clearRedash()" style="color:var(--red);border-color:var(--red);">연결 해제</button>
+      <button class="r-cancel" onclick="closeRedash()">닫기</button>
+    </div>
+  </div>
 </div>
 
 <!-- 업로드 모달 -->
@@ -488,7 +545,7 @@ document.getElementById('upload-modal').addEventListener('click', e => { if(e.ta
 // ── 히스토리 사이드바 ─────────────────────────────────────────────────
 async function loadHistory() {
   const [runs, issues] = await Promise.all([
-    sbGet('analysis_runs?select=id,created_at,date_from,date_to,label,total_events,unique_users&order=created_at.desc'),
+    sbGet('analysis_runs?select=id,created_at,date_from,date_to,label,total_events,unique_users,real_dau,prev_dau&order=created_at.desc'),
     sbGet('detected_issues?select=run_id,severity'),
   ]);
   const issueMap = {};
@@ -547,8 +604,8 @@ async function loadRun(runId, meta) {
     sbGet(`detected_issues?run_id=eq.${runId}&order=created_at.asc`),
   ]);
 
-  const todaySum = dau.reduce((s,r)=>s+r.today_count,0);
-  const prevSum  = dau.reduce((s,r)=>s+r.prev_count,0);
+  const todaySum = meta.real_dau || dau.reduce((s,r)=>s+r.today_count,0);
+  const prevSum  = meta.prev_dau || dau.reduce((s,r)=>s+r.prev_count,0);
   const dauDelta = prevSum ? ((todaySum-prevSum)/prevSum*100).toFixed(1) : 0;
   const crits = issues.filter(i=>i.severity==='critical');
   const warns = issues.filter(i=>i.severity==='warning');
@@ -569,7 +626,7 @@ async function loadRun(runId, meta) {
     ${critBanner}
     <div class="kpi-grid">
       <div class="kpi-card c-blue">
-        <div class="label">오늘 DAU 합계</div>
+        <div class="label">DAU (유니크 유저)</div>
         <div class="value">${todaySum.toLocaleString()}</div>
         <div class="delta ${dauDelta>=0?'up':'down'}">${dauDelta>=0?'▲':'▼'} ${Math.abs(dauDelta)}% vs 전일 (${prevSum.toLocaleString()}명)</div>
       </div>

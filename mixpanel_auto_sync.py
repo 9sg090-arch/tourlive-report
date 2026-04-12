@@ -490,6 +490,8 @@ def main():
         "label":        label,
         "total_events": agg["total"],
         "unique_users": agg["unique_users"],
+        "real_dau":     real_dau_today,
+        "prev_dau":     real_dau_prev,
         "notes":        f"[API 자동] 이슈 {len(issues)}건 감지 | DAU {real_dau_today:,}명 | {NOW.strftime('%Y-%m-%d %H:%M KST')}",
     }])
     if not run_res:
