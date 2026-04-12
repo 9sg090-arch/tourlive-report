@@ -6,7 +6,7 @@
     "project_id": "YOUR_MIXPANEL_PROJECT_ID",
     "project_secret": "YOUR_MIXPANEL_PROJECT_SECRET",
     "events": {
-      "session_start": "Session Start",
+      "session_start": "App Session",
       "tour_view": "Tour View",
       "purchase": "Purchase"
     }
