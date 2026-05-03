@@ -857,7 +857,7 @@ function updateSyncStatusBar(runs) {
 // ── 히스토리 사이드바 ─────────────────────────────────────────────────
 async function loadHistory() {
   const [runs, issues] = await Promise.all([
-    sbGet('analysis_runs?select=id,created_at,date_from,date_to,label,total_events,unique_users&order=created_at.desc'),
+    sbGet('analysis_runs?select=id,created_at,date_from,date_to,label,total_events,unique_users,real_dau,prev_dau&order=created_at.desc'),
     sbGet('detected_issues?select=run_id,severity'),
   ]);
   const issueMap = {};
@@ -930,7 +930,9 @@ async function loadRun(runId, meta) {
 
   const todaySum = dau.reduce((s,r)=>s+r.today_count,0);
   const prevSum  = dau.reduce((s,r)=>s+r.prev_count,0);
-  const dauDelta = prevSum ? ((todaySum-prevSum)/prevSum*100).toFixed(1) : 0;
+  const realDau  = meta.real_dau || todaySum;
+  const prevDau  = meta.prev_dau  || prevSum;
+  const dauDelta = prevDau ? ((realDau-prevDau)/prevDau*100).toFixed(1) : 0;
   const crits = issues.filter(i=>i.severity==='critical');
   const warns = issues.filter(i=>i.severity==='warning');
   const loginEvt = evts.find(e=>e.event_name==='PageView_Login');
@@ -959,9 +961,9 @@ async function loadRun(runId, meta) {
     ${critBanner}
     <div class="kpi-grid">
       <div class="kpi-card c-blue">
-        <div class="label">오늘 DAU 합계</div>
-        <div class="value">${todaySum.toLocaleString()}</div>
-        <div class="delta ${dauDelta>=0?'up':'down'}">${dauDelta>=0?'▲':'▼'} ${Math.abs(dauDelta)}% vs 전일 (${prevSum.toLocaleString()}명)</div>
+        <div class="label">오늘 DAU (유니크)</div>
+        <div class="value">${realDau.toLocaleString()}</div>
+        <div class="delta ${dauDelta>=0?'up':'down'}">${dauDelta>=0?'▲':'▼'} ${Math.abs(dauDelta)}% vs 전일 (${prevDau.toLocaleString()}명)</div>
       </div>
       <div class="kpi-card c-red">
         <div class="label">이벤트 노이즈</div>
