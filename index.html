@@ -412,7 +412,8 @@ async function confirmDelete() {
       sbDelete('detected_issues',  `run_id=eq.${id}`),
       sbDelete('dau_hourly',       `run_id=eq.${id}`),
       sbDelete('event_stats',      `run_id=eq.${id}`),
-      sbDelete('funnel_daily',     `run_id=eq.${id}`),
+      sbDelete('funnel_daily',        `run_id=eq.${id}`),
+      sbDelete('player_funnel_daily', `run_id=eq.${id}`),
       sbDelete('platform_stats',   `run_id=eq.${id}`),
       sbDelete('country_stats',    `run_id=eq.${id}`),
       sbDelete('tour_view_stats',  `run_id=eq.${id}`),
@@ -894,7 +895,7 @@ async function loadRun(runId, meta) {
   closeDrilldown();
   _drilldownRunId = runId;
 
-  const [dau,evts,plat,ctry,tours,issues,funnel] = await Promise.all([
+  const [dau,evts,plat,ctry,tours,issues,funnel,playerFunnel] = await Promise.all([
     sbGet(`dau_hourly?run_id=eq.${runId}&order=hour.asc`),
     sbGet(`event_stats?run_id=eq.${runId}&order=count.desc`),
     sbGet(`platform_stats?run_id=eq.${runId}&order=count.desc`),
@@ -902,6 +903,7 @@ async function loadRun(runId, meta) {
     sbGet(`tour_view_stats?run_id=eq.${runId}&order=view_count.desc`),
     sbGet(`detected_issues?run_id=eq.${runId}&order=created_at.asc`),
     sbGet(`funnel_daily?run_id=eq.${runId}&order=id.asc`),
+    sbGet(`player_funnel_daily?run_id=eq.${runId}&order=funnel_key.asc,step_order.asc`),
   ]);
 
   const todaySum = dau.reduce((s,r)=>s+r.today_count,0);
@@ -998,6 +1000,43 @@ async function loadRun(runId, meta) {
           </h3>
           <div id="drilldown-body"><div style="color:var(--muted);font-size:12px;">로딩 중…</div></div>
         </div>`;
+    })() : ''}
+    ${playerFunnel.length ? (() => {
+      const funnelKeys = [...new Set(playerFunnel.map(r => r.funnel_key))];
+      const funnelCards = funnelKeys.map(key => {
+        const steps = playerFunnel.filter(r => r.funnel_key === key);
+        const funnelName = steps[0].funnel_name;
+        const stepHtml = steps.map((s, i) => {
+          const delta = s.prev_count > 0 ? ((s.today_count - s.prev_count) / s.prev_count * 100) : null;
+          const deltaHtml = delta !== null
+            ? `<div class="funnel-delta ${delta >= 0 ? 'up' : 'down'}">${delta >= 0 ? '▲' : '▼'} ${Math.abs(delta).toFixed(1)}%</div>`
+            : `<div class="funnel-delta neu">— 전일 없음</div>`;
+          return `
+            <div class="funnel-step">
+              <div class="funnel-step-num">STEP ${i + 1}</div>
+              <div class="funnel-step-label">${s.step_label}</div>
+              <div class="funnel-count">${s.today_count.toLocaleString()}</div>
+              <div class="funnel-prev">전일 ${s.prev_count.toLocaleString()}건</div>
+              ${deltaHtml}
+            </div>`;
+        }).join('');
+        const convHtml = steps.slice(0, -1).map((s, i) => {
+          const next = steps[i + 1];
+          const rate = s.today_count > 0 ? (next.today_count / s.today_count * 100).toFixed(1) : '—';
+          return `
+            <div class="funnel-conv">
+              <div class="funnel-conv-label">${s.step_label} → ${next.step_label}</div>
+              <div class="funnel-conv-val">${rate}%</div>
+            </div>`;
+        }).join('');
+        return `
+          <div class="funnel-card">
+            <h3>🎧 ${funnelName} — 오늘 vs 전일</h3>
+            <div class="funnel-steps">${stepHtml}</div>
+            <div class="funnel-conv-row">${convHtml}</div>
+          </div>`;
+      }).join('');
+      return `<div class="section-title" style="margin-top:24px;margin-bottom:8px;font-size:13px;font-weight:700;color:var(--muted);">🎧 Player 퍼널 분석</div>${funnelCards}`;
     })() : ''}
     <div class="row-full">
       <div class="chart-card">
