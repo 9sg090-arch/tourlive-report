@@ -251,6 +251,16 @@ footer{text-align:center;color:var(--muted2);font-size:10px;margin-top:20px;padd
 }
 #delete-confirm-btn:hover{background:#e11d48;}
 #delete-confirm-btn:disabled{background:var(--border);color:var(--muted);cursor:not-allowed;}
+.tip{position:relative;cursor:help;border-bottom:1px dashed var(--muted);}
+.tip::after{
+  content:attr(data-tip);
+  position:absolute;bottom:calc(100% + 6px);left:50%;transform:translateX(-50%);
+  white-space:pre-line;width:280px;background:#1e293b;color:#e2e8f0;
+  font-size:11px;font-weight:400;line-height:1.5;padding:8px 10px;
+  border-radius:6px;border:1px solid var(--border);
+  pointer-events:none;opacity:0;transition:opacity 0.15s;z-index:100;
+}
+.tip:hover::after{opacity:1;}
 </style>
 </head>
 <body>
@@ -1001,24 +1011,51 @@ async function loadRun(runId, meta) {
       }).join('');
       const playerFunnelHtml = (() => {
         if (!playerFunnel.length) return '';
+        const FUNNEL_META = {
+          entry:      { color:'#3b82f6', tip:'이벤트: PageView_Tour → PageView_Player\n투어 상세를 조회한 유저 중 실제로 Player를 열어본 비율을 측정합니다.' },
+          engagement: { color:'#8b5cf6', tip:'이벤트: PageView_Player → EventOn_TrackStart → EventOn_TrackComplete\nPlayer를 열고 트랙을 시작한 뒤 끝까지 완주한 비율을 측정합니다.' },
+          free_trial: { color:'#10b981', tip:'이벤트: EventOn_ClickTourSample → PageView_Player → EventOn_BeginPurchase → EventOn_CompletePurchase\n무료 듣기(샘플 클릭)에서 시작해 최종 결제 완료로 전환되는 비율을 측정합니다.' },
+        };
         const funnelKeys = [...new Set(playerFunnel.map(r => r.funnel_key))];
-        return funnelKeys.map(key => {
+        const cards = funnelKeys.map(key => {
           const pSteps = playerFunnel.filter(r => r.funnel_key === key);
           const pName = pSteps[0].funnel_name;
-          const pStepHtml = pSteps.map((s, i) => {
+          const { color, tip } = FUNNEL_META[key] || { color:'#64748b', tip:'' };
+          const flowItems = [];
+          pSteps.forEach((s, i) => {
             const d = s.prev_count > 0 ? ((s.today_count - s.prev_count) / s.prev_count * 100) : null;
-            const dHtml = d !== null
-              ? `<div class="funnel-delta ${d >= 0 ? 'up' : 'down'}">${d >= 0 ? '▲' : '▼'} ${Math.abs(d).toFixed(1)}%</div>`
-              : `<div class="funnel-delta neu">— 전일 없음</div>`;
-            return `<div class="funnel-step"><div class="funnel-step-num">STEP ${i+1}</div><div class="funnel-step-label">${s.step_label}</div><div class="funnel-count">${s.today_count.toLocaleString()}</div><div class="funnel-prev">전일 ${s.prev_count.toLocaleString()}건</div>${dHtml}</div>`;
-          }).join('');
-          const pConvHtml = pSteps.slice(0,-1).map((s,i) => {
-            const nx = pSteps[i+1];
-            const r = s.today_count > 0 ? (nx.today_count/s.today_count*100).toFixed(1) : '—';
-            return `<div class="funnel-conv"><div class="funnel-conv-label">${s.step_label} → ${nx.step_label}</div><div class="funnel-conv-val">${r}%</div></div>`;
-          }).join('');
-          return `<div style="margin-top:16px;"><div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:8px;">🎧 ${pName}</div><div class="funnel-steps">${pStepHtml}</div><div class="funnel-conv-row">${pConvHtml}</div></div>`;
+            const dColor = d === null ? '#64748b' : d >= 0 ? '#10b981' : '#f43f5e';
+            const dText  = d === null ? '—' : `${d >= 0 ? '▲' : '▼'} ${Math.abs(d).toFixed(1)}%`;
+            flowItems.push(`
+              <div style="flex:1;min-width:80px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 12px;text-align:center;">
+                <div style="font-size:10px;color:var(--muted);margin-bottom:4px;">STEP ${i+1}</div>
+                <div style="font-size:11px;font-weight:600;color:#e2e8f0;margin-bottom:6px;line-height:1.3;">${s.step_label}</div>
+                <div style="font-size:18px;font-weight:700;color:#fff;">${s.today_count.toLocaleString()}</div>
+                <div style="font-size:10px;color:var(--muted);margin-top:2px;">전일 ${s.prev_count.toLocaleString()}</div>
+                <div style="font-size:10px;color:${dColor};margin-top:2px;">${dText}</div>
+              </div>`);
+            if (i < pSteps.length - 1) {
+              const nx = pSteps[i+1];
+              const rate = s.today_count > 0 ? (nx.today_count/s.today_count*100).toFixed(1) : '—';
+              flowItems.push(`
+                <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:0 4px;flex-shrink:0;">
+                  <div style="font-size:16px;color:var(--muted);">→</div>
+                  <div style="font-size:11px;font-weight:700;color:${color};">${rate}%</div>
+                </div>`);
+            }
+          });
+          return `
+            <div style="background:var(--card2);border-radius:10px;border:1px solid var(--border);border-left:3px solid ${color};padding:14px 16px;">
+              <div style="display:flex;align-items:center;gap:6px;margin-bottom:12px;">
+                <span style="font-size:12px;font-weight:700;color:#e2e8f0;">${pName}</span>
+                <span class="tip" data-tip="${tip}" style="font-size:11px;color:var(--muted);cursor:help;">ⓘ</span>
+              </div>
+              <div style="display:flex;align-items:stretch;gap:6px;flex-wrap:wrap;">
+                ${flowItems.join('')}
+              </div>
+            </div>`;
         }).join('');
+        return `<div style="display:flex;flex-direction:column;gap:10px;margin-top:12px;">${cards}</div>`;
       })();
       return `
         <div class="funnel-card">
