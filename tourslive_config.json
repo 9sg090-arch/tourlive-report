@@ -7,8 +7,13 @@
     "project_secret": "YOUR_MIXPANEL_PROJECT_SECRET",
     "events": {
       "session_start": "App Session",
-      "tour_view": "Tour View",
-      "purchase": "Purchase"
+      "tour_view": "PageView_Tour",
+      "purchase": "EventOn_CompletePurchase",
+      "player_open": "PageView_Player",
+      "track_start": "EventOn_TrackStart",
+      "track_complete": "EventOn_TrackComplete",
+      "tour_sample_click": "EventOn_ClickTourSample",
+      "begin_purchase": "EventOn_BeginPurchase"
     }
   },
 

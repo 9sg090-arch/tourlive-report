@@ -323,6 +323,54 @@ def fetch_all() -> dict:
         ],
     }
 
+    # ── Mixpanel: Player 퍼널 분석 ──────────────────
+    print("  [Mixpanel] Player 퍼널 수집…")
+
+    # 퍼널 1: 투어 상세 → Player 진입율
+    try:
+        raw_pf1 = mp_funnel([MP_EVENTS["tour_view"], MP_EVENTS["player_open"]])
+        steps1 = raw_pf1.get("data", {}).get("steps", [])
+        data["player_entry_funnel"] = {
+            "labels": ["투어 상세 조회", "Player 오픈"],
+            "values": [s.get("count", 0) for s in steps1],
+        }
+    except Exception as e:
+        print(f"  ⚠️  Player 진입 퍼널 실패: {e}")
+        data["player_entry_funnel"] = {"labels": ["투어 상세 조회", "Player 오픈"], "values": [0, 0]}
+
+    # 퍼널 2: Player 참여도 (오픈 → 트랙 시작 → 트랙 완주)
+    try:
+        def _sum_series(event):
+            return sum(mp_segmentation(event).get("data", {}).get("series", {}).values())
+        data["player_engagement"] = {
+            "labels": ["Player 오픈", "트랙 시작", "트랙 완주"],
+            "values": [
+                _sum_series(MP_EVENTS["player_open"]),
+                _sum_series(MP_EVENTS["track_start"]),
+                _sum_series(MP_EVENTS["track_complete"]),
+            ],
+        }
+    except Exception as e:
+        print(f"  ⚠️  Player 참여도 수집 실패: {e}")
+        data["player_engagement"] = {"labels": ["Player 오픈", "트랙 시작", "트랙 완주"], "values": [0, 0, 0]}
+
+    # 퍼널 3: 무료 체험 → 구매 전환
+    try:
+        raw_pf3 = mp_funnel([
+            MP_EVENTS["tour_sample_click"],
+            MP_EVENTS["player_open"],
+            MP_EVENTS["begin_purchase"],
+            MP_EVENTS["purchase"],
+        ])
+        steps3 = raw_pf3.get("data", {}).get("steps", [])
+        data["free_trial_funnel"] = {
+            "labels": ["무료 듣기 클릭", "Player 오픈", "구매 시작", "결제 완료"],
+            "values": [s.get("count", 0) for s in steps3],
+        }
+    except Exception as e:
+        print(f"  ⚠️  무료 체험 퍼널 수집 실패: {e}")
+        data["free_trial_funnel"] = {"labels": ["무료 듣기 클릭", "Player 오픈", "구매 시작", "결제 완료"], "values": [0, 0, 0, 0]}
+
     data["generated_at"] = NOW.strftime("%Y-%m-%d %H:%M:%S KST")
     data["period"]       = f"{START_DATE} ~ {END_DATE}"
     data["currency"]     = CURRENCY
@@ -479,6 +527,23 @@ HTML_TEMPLATE = """\
   </div>
 </div>
 
+<!-- Player 퍼널 분석 -->
+<div class="section-title">🎧 Player 퍼널 분석</div>
+<div class="charts-row3">
+  <div class="chart-card">
+    <h3>📍 투어 조회 → Player 진입율</h3>
+    <canvas id="playerEntryChart"></canvas>
+  </div>
+  <div class="chart-card">
+    <h3>🎵 Player 참여도 (오픈→시작→완주)</h3>
+    <canvas id="playerEngagementChart"></canvas>
+  </div>
+  <div class="chart-card">
+    <h3>🛒 무료 체험 → 구매 전환</h3>
+    <canvas id="freeTrialFunnelChart"></canvas>
+  </div>
+</div>
+
 <!-- 유저 행동 패턴 -->
 <div class="section-title">👣 유저 행동 패턴</div>
 <div class="charts-row3">
@@ -615,6 +680,108 @@ const fmt = n => n ? new Intl.NumberFormat('ko-KR').format(n) : '-';
 }});
 if (!D.top_tours || !D.top_tours.length) {{
   tbody.innerHTML = '<tr><td colspan="4" style="color:#94a3b8;text-align:center">데이터 없음</td></tr>';
+}}
+
+// ── Player 진입 퍼널 ──────────────────────────────────
+if (D.player_entry_funnel && D.player_entry_funnel.values.some(v => v > 0)) {{
+  new Chart(document.getElementById('playerEntryChart'), {{
+    type: 'bar',
+    data: {{
+      labels: D.player_entry_funnel.labels,
+      datasets: [{{
+        data: D.player_entry_funnel.values,
+        backgroundColor: ['#3b82f6', '#6366f1'],
+        borderRadius: 6,
+      }}],
+    }},
+    options: {{
+      indexAxis: 'y',
+      responsive: true,
+      plugins: {{
+        legend: {{ display: false }},
+        tooltip: {{
+          callbacks: {{
+            afterLabel: ctx => {{
+              const first = D.player_entry_funnel.values[0] || 1;
+              return `진입율: ${{(ctx.raw / first * 100).toFixed(1)}}%`;
+            }},
+          }},
+        }},
+      }},
+      scales: commonScales,
+    }},
+  }});
+}} else {{
+  document.getElementById('playerEntryChart').parentElement.innerHTML +=
+    '<p style="color:#94a3b8;font-size:12px;text-align:center;margin-top:12px">데이터 없음</p>';
+}}
+
+// ── Player 참여도 ─────────────────────────────────────
+if (D.player_engagement && D.player_engagement.values.some(v => v > 0)) {{
+  new Chart(document.getElementById('playerEngagementChart'), {{
+    type: 'bar',
+    data: {{
+      labels: D.player_engagement.labels,
+      datasets: [{{
+        data: D.player_engagement.values,
+        backgroundColor: ['#6366f1', '#f59e0b', '#10b981'],
+        borderRadius: 6,
+      }}],
+    }},
+    options: {{
+      indexAxis: 'y',
+      responsive: true,
+      plugins: {{
+        legend: {{ display: false }},
+        tooltip: {{
+          callbacks: {{
+            afterLabel: ctx => {{
+              const first = D.player_engagement.values[0] || 1;
+              return `비율: ${{(ctx.raw / first * 100).toFixed(1)}}%`;
+            }},
+          }},
+        }},
+      }},
+      scales: commonScales,
+    }},
+  }});
+}} else {{
+  document.getElementById('playerEngagementChart').parentElement.innerHTML +=
+    '<p style="color:#94a3b8;font-size:12px;text-align:center;margin-top:12px">데이터 없음</p>';
+}}
+
+// ── 무료 체험 → 구매 전환 퍼널 ───────────────────────
+if (D.free_trial_funnel && D.free_trial_funnel.values.some(v => v > 0)) {{
+  new Chart(document.getElementById('freeTrialFunnelChart'), {{
+    type: 'bar',
+    data: {{
+      labels: D.free_trial_funnel.labels,
+      datasets: [{{
+        data: D.free_trial_funnel.values,
+        backgroundColor: ['#3b82f6', '#6366f1', '#f59e0b', '#10b981'],
+        borderRadius: 6,
+      }}],
+    }},
+    options: {{
+      indexAxis: 'y',
+      responsive: true,
+      plugins: {{
+        legend: {{ display: false }},
+        tooltip: {{
+          callbacks: {{
+            afterLabel: ctx => {{
+              const first = D.free_trial_funnel.values[0] || 1;
+              return `전환율: ${{(ctx.raw / first * 100).toFixed(1)}}%`;
+            }},
+          }},
+        }},
+      }},
+      scales: commonScales,
+    }},
+  }});
+}} else {{
+  document.getElementById('freeTrialFunnelChart').parentElement.innerHTML +=
+    '<p style="color:#94a3b8;font-size:12px;text-align:center;margin-top:12px">데이터 없음</p>';
 }}
 
 // ── 리텐션 커브 ──────────────────────────────────────
