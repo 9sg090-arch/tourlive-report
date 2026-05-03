@@ -472,10 +472,21 @@ function toggleTours(btn) {
 // ── 투어 상세 드릴다운 ─────────────────────────────────────────────────
 let _drilldownRunId = null;
 
+function togglePlayerFunnel() {
+  const panel = document.getElementById('player-funnel-panel');
+  const btn = document.getElementById('player-funnel-btn');
+  if (!panel) return;
+  const open = panel.style.display !== 'none';
+  panel.style.display = open ? 'none' : 'block';
+  btn.textContent = open ? '🎧 Player 퍼널 분석 보기 ▼' : '🎧 Player 퍼널 닫기 ▲';
+}
+
 function closeDrilldown() {
   const panel = document.getElementById('drilldown-panel');
   if (panel) panel.classList.remove('open');
   document.querySelectorAll('.funnel-step.active').forEach(el => el.classList.remove('active'));
+  const btn = document.getElementById('tour-drilldown-btn');
+  if (btn) btn.textContent = '🗺 투어 상세 속성 분석 보기 ▼';
 }
 
 async function openTourDrilldown(stepEl) {
@@ -486,6 +497,7 @@ async function openTourDrilldown(stepEl) {
   if (stepEl.classList.contains('active')) { closeDrilldown(); return; }
   document.querySelectorAll('.funnel-step.active').forEach(el => el.classList.remove('active'));
   stepEl.classList.add('active');
+  stepEl.textContent = '🗺 투어 상세 속성 분석 닫기 ▲';
   panel.classList.add('open');
   document.getElementById('drilldown-body').innerHTML = '<div style="color:var(--muted);font-size:12px;padding:8px 0;">로딩 중…</div>';
 
@@ -969,10 +981,9 @@ async function loadRun(runId, meta) {
         const deltaHtml = delta !== null
           ? `<div class="funnel-delta ${delta >= 0 ? 'up' : 'down'}">${delta >= 0 ? '▲' : '▼'} ${Math.abs(delta).toFixed(1)}%</div>`
           : `<div class="funnel-delta neu">— 전일 없음</div>`;
-        const isClickable = s.step === 'tour_view';
         return `
-          <div class="funnel-step${isClickable ? ' clickable' : ''}" ${isClickable ? `onclick="openTourDrilldown(this)"` : ''}>
-            <div class="funnel-step-num">STEP ${i + 1}${isClickable ? ' 🔍' : ''}</div>
+          <div class="funnel-step">
+            <div class="funnel-step-num">STEP ${i + 1}</div>
             <div class="funnel-step-label">${s.step_label}</div>
             <div class="funnel-count">${s.today_count.toLocaleString()}</div>
             <div class="funnel-prev">전일 ${s.prev_count.toLocaleString()}건</div>
@@ -988,11 +999,37 @@ async function loadRun(runId, meta) {
             <div class="funnel-conv-val">${rate}%</div>
           </div>`;
       }).join('');
+      const playerFunnelHtml = (() => {
+        if (!playerFunnel.length) return '';
+        const funnelKeys = [...new Set(playerFunnel.map(r => r.funnel_key))];
+        return funnelKeys.map(key => {
+          const pSteps = playerFunnel.filter(r => r.funnel_key === key);
+          const pName = pSteps[0].funnel_name;
+          const pStepHtml = pSteps.map((s, i) => {
+            const d = s.prev_count > 0 ? ((s.today_count - s.prev_count) / s.prev_count * 100) : null;
+            const dHtml = d !== null
+              ? `<div class="funnel-delta ${d >= 0 ? 'up' : 'down'}">${d >= 0 ? '▲' : '▼'} ${Math.abs(d).toFixed(1)}%</div>`
+              : `<div class="funnel-delta neu">— 전일 없음</div>`;
+            return `<div class="funnel-step"><div class="funnel-step-num">STEP ${i+1}</div><div class="funnel-step-label">${s.step_label}</div><div class="funnel-count">${s.today_count.toLocaleString()}</div><div class="funnel-prev">전일 ${s.prev_count.toLocaleString()}건</div>${dHtml}</div>`;
+          }).join('');
+          const pConvHtml = pSteps.slice(0,-1).map((s,i) => {
+            const nx = pSteps[i+1];
+            const r = s.today_count > 0 ? (nx.today_count/s.today_count*100).toFixed(1) : '—';
+            return `<div class="funnel-conv"><div class="funnel-conv-label">${s.step_label} → ${nx.step_label}</div><div class="funnel-conv-val">${r}%</div></div>`;
+          }).join('');
+          return `<div style="margin-top:16px;"><div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:8px;">🎧 ${pName}</div><div class="funnel-steps">${pStepHtml}</div><div class="funnel-conv-row">${pConvHtml}</div></div>`;
+        }).join('');
+      })();
       return `
         <div class="funnel-card">
           <h3>🔀 구매 퍼널 (투어 상세 → 구매 완료) — 오늘 vs 전일</h3>
           <div class="funnel-steps">${stepHtml}</div>
           <div class="funnel-conv-row">${convHtml}</div>
+          <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:12px;display:flex;gap:8px;flex-wrap:wrap;">
+            <button id="tour-drilldown-btn" onclick="openTourDrilldown(this)" style="background:none;border:1px solid var(--border);color:var(--muted);font-size:12px;padding:6px 14px;border-radius:6px;cursor:pointer;">🗺 투어 상세 속성 분석 보기 ▼</button>
+            ${playerFunnel.length ? `<button id="player-funnel-btn" onclick="togglePlayerFunnel()" style="background:none;border:1px solid var(--border);color:var(--muted);font-size:12px;padding:6px 14px;border-radius:6px;cursor:pointer;">🎧 Player 퍼널 분석 보기 ▼</button>` : ''}
+          </div>
+          ${playerFunnel.length ? `<div id="player-funnel-panel" style="display:none;">${playerFunnelHtml}</div>` : ''}
         </div>
         <div id="drilldown-panel">
           <h3>🗺 투어 상세 (PageView_Tour) 속성 분석 — 오늘 vs 전일
@@ -1000,43 +1037,6 @@ async function loadRun(runId, meta) {
           </h3>
           <div id="drilldown-body"><div style="color:var(--muted);font-size:12px;">로딩 중…</div></div>
         </div>`;
-    })() : ''}
-    ${playerFunnel.length ? (() => {
-      const funnelKeys = [...new Set(playerFunnel.map(r => r.funnel_key))];
-      const funnelCards = funnelKeys.map(key => {
-        const steps = playerFunnel.filter(r => r.funnel_key === key);
-        const funnelName = steps[0].funnel_name;
-        const stepHtml = steps.map((s, i) => {
-          const delta = s.prev_count > 0 ? ((s.today_count - s.prev_count) / s.prev_count * 100) : null;
-          const deltaHtml = delta !== null
-            ? `<div class="funnel-delta ${delta >= 0 ? 'up' : 'down'}">${delta >= 0 ? '▲' : '▼'} ${Math.abs(delta).toFixed(1)}%</div>`
-            : `<div class="funnel-delta neu">— 전일 없음</div>`;
-          return `
-            <div class="funnel-step">
-              <div class="funnel-step-num">STEP ${i + 1}</div>
-              <div class="funnel-step-label">${s.step_label}</div>
-              <div class="funnel-count">${s.today_count.toLocaleString()}</div>
-              <div class="funnel-prev">전일 ${s.prev_count.toLocaleString()}건</div>
-              ${deltaHtml}
-            </div>`;
-        }).join('');
-        const convHtml = steps.slice(0, -1).map((s, i) => {
-          const next = steps[i + 1];
-          const rate = s.today_count > 0 ? (next.today_count / s.today_count * 100).toFixed(1) : '—';
-          return `
-            <div class="funnel-conv">
-              <div class="funnel-conv-label">${s.step_label} → ${next.step_label}</div>
-              <div class="funnel-conv-val">${rate}%</div>
-            </div>`;
-        }).join('');
-        return `
-          <div class="funnel-card">
-            <h3>🎧 ${funnelName} — 오늘 vs 전일</h3>
-            <div class="funnel-steps">${stepHtml}</div>
-            <div class="funnel-conv-row">${convHtml}</div>
-          </div>`;
-      }).join('');
-      return `<div class="section-title" style="margin-top:24px;margin-bottom:8px;font-size:13px;font-weight:700;color:var(--muted);">🎧 Player 퍼널 분석</div>${funnelCards}`;
     })() : ''}
     <div class="row-full">
       <div class="chart-card">
