@@ -937,6 +937,11 @@ async function loadRun(runId, meta) {
   const warns = issues.filter(i=>i.severity==='warning');
   const loginEvt = evts.find(e=>e.event_name==='PageView_Login');
   const noiseRate = loginEvt && meta.total_events ? Math.round(loginEvt.count/meta.total_events*100) : 0;
+  const tourViewEvt  = evts.find(e=>e.event_name==='PageView_Tour');
+  const purchaseEvt  = evts.find(e=>e.event_name==='EventOn_CompletePurchase');
+  const tourViewCnt  = tourViewEvt  ? tourViewEvt.count  : 0;
+  const purchaseCnt  = purchaseEvt  ? purchaseEvt.count  : 0;
+  const convRate     = tourViewCnt  ? (purchaseCnt/tourViewCnt*100).toFixed(1) : '—';
 
   const critBanner = crits.length ? `
     <div class="alert-banner">
@@ -971,9 +976,9 @@ async function loadRun(runId, meta) {
         <div class="delta down">PageView_Login ${loginEvt?loginEvt.count:0}건</div>
       </div>
       <div class="kpi-card c-indigo">
-        <div class="label">유니크 유저</div>
-        <div class="value">${meta.unique_users||0}</div>
-        <div class="delta neu">${plat.map(p=>`${p.platform} ${p.count}%`).join(' · ')}</div>
+        <div class="label">구매 전환율</div>
+        <div class="value">${convRate}%</div>
+        <div class="delta neu">투어조회 ${tourViewCnt.toLocaleString()} · 구매 ${purchaseCnt.toLocaleString()}건</div>
       </div>
       <div class="kpi-card c-yellow">
         <div class="label">감지된 이슈</div>
@@ -1083,10 +1088,9 @@ async function loadRun(runId, meta) {
         <canvas id="cDau" style="max-height:170px;"></canvas>
       </div>
     </div>
-    <div class="row3">
+    <div class="row2">
       <div class="chart-card"><h3>📊 이벤트 타입 분포</h3><canvas id="cEvt"></canvas></div>
       <div class="chart-card"><h3>📱 플랫폼</h3><canvas id="cPlat"></canvas></div>
-      <div class="chart-card"><h3>🌍 국가</h3><canvas id="cCtry"></canvas></div>
     </div>
     <div class="row2">
       <div class="issue-card">
@@ -1154,11 +1158,6 @@ async function loadRun(runId, meta) {
     options:{responsive:true,plugins:{legend:{position:'bottom',labels:{color:'#94a3b8',font:{size:10}}}}}
   }));
 
-  charts.push(new Chart(document.getElementById('cCtry'),{
-    type:'doughnut',
-    data:{labels:ctry.map(c=>c.country_name||c.country_code),datasets:[{data:ctry.map(c=>c.count),backgroundColor:['#3b82f6','#8b5cf6','#10b981','#f59e0b','#94a3b8'],borderWidth:0}]},
-    options:{responsive:true,plugins:{legend:{position:'bottom',labels:{color:'#94a3b8',font:{size:10}}}}}
-  }));
 }
 
 // 초기 로드
