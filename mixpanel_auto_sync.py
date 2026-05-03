@@ -345,7 +345,85 @@ def calc_funnel(raw_today: list[dict], raw_prev: list[dict]) -> list[dict]:
 
 
 # ──────────────────────────────────────────────
-# 5. 이슈 자동 감지
+# 6. Player 퍼널 집계 (유저 단위)
+# ──────────────────────────────────────────────
+PLAYER_FUNNELS = [
+    {
+        "funnel_key":  "entry",
+        "funnel_name": "투어 조회 → Player 진입",
+        "steps": [
+            ("tour_view",   "투어 상세 조회", "PageView_Tour"),
+            ("player_open", "Player 오픈",   "PageView_Player"),
+        ],
+    },
+    {
+        "funnel_key":  "engagement",
+        "funnel_name": "Player 참여도",
+        "steps": [
+            ("player_open",    "Player 오픈", "PageView_Player"),
+            ("track_start",    "트랙 시작",   "EventOn_TrackStart"),
+            ("track_complete", "트랙 완주",   "EventOn_TrackComplete"),
+        ],
+    },
+    {
+        "funnel_key":  "free_trial",
+        "funnel_name": "무료 체험 → 구매 전환",
+        "steps": [
+            ("sample_click",      "무료 듣기 클릭", "EventOn_ClickTourSample"),
+            ("player_open",       "Player 오픈",   "PageView_Player"),
+            ("begin_purchase",    "구매 시작",      "EventOn_BeginPurchase"),
+            ("complete_purchase", "결제 완료",      "EventOn_CompletePurchase"),
+        ],
+    },
+]
+
+def calc_player_funnels(raw_today: list[dict], raw_prev: list[dict]) -> list[dict]:
+    """Player 퍼널 3개를 유저 단위(distinct_id)로 집계합니다.
+    각 단계는 이전 단계를 통과한 유저 중에서 다음 이벤트를 발생시킨 유저만 카운트합니다.
+    """
+    def count_funnel_users(raw: list[dict], steps: list[tuple]) -> list[int]:
+        user_events: dict[str, set] = defaultdict(set)
+        for row in raw:
+            event = row.get("event", "").strip()
+            did   = str(row.get("properties", {}).get("distinct_id", ""))
+            if event and did:
+                user_events[did].add(event)
+
+        counts: list[int] = []
+        eligible = set(user_events.keys())
+        for _, _, event_name in steps:
+            reached  = {uid for uid in eligible if event_name in user_events[uid]}
+            counts.append(len(reached))
+            eligible = reached
+        return counts
+
+    rows = []
+    for funnel in PLAYER_FUNNELS:
+        today_counts = count_funnel_users(raw_today, funnel["steps"])
+        prev_counts  = count_funnel_users(raw_prev,  funnel["steps"])
+        for i, (step_key, step_label, _) in enumerate(funnel["steps"]):
+            rows.append({
+                "funnel_key":  funnel["funnel_key"],
+                "funnel_name": funnel["funnel_name"],
+                "step_order":  i,
+                "step_key":    step_key,
+                "step_label":  step_label,
+                "today_count": today_counts[i] if i < len(today_counts) else 0,
+                "prev_count":  prev_counts[i]  if i < len(prev_counts)  else 0,
+            })
+
+    parts = []
+    for funnel in PLAYER_FUNNELS:
+        funnel_rows = [r for r in rows if r["funnel_key"] == funnel["funnel_key"]]
+        first = funnel_rows[0]["today_count"]  if funnel_rows else 0
+        last  = funnel_rows[-1]["today_count"] if funnel_rows else 0
+        parts.append(f"{funnel['funnel_key']}({first}→{last})")
+    print(f"  ✅ player_funnel 집계 완료: {', '.join(parts)}")
+    return rows
+
+
+# ──────────────────────────────────────────────
+# 6. 이슈 자동 감지
 # ──────────────────────────────────────────────
 def detect_issues(agg: dict, dau_today: dict, dau_prev: dict,
                   real_dau_today: int = 0, real_dau_prev: int = 0) -> list[dict]:
@@ -474,6 +552,10 @@ def main():
     print("🔀 퍼널 집계 중…")
     funnel_rows = calc_funnel(raw_today_only, raw_prev_only)
 
+    # ─ Player 퍼널 집계
+    print("🎧 Player 퍼널 집계 중…")
+    player_funnel_rows = calc_player_funnels(raw_today_only, raw_prev_only)
+
     # ─ 이슈 감지
     print("🔍 이슈 감지 중…")
     issues = detect_issues(agg, dau_today, dau_prev, real_dau_today, real_dau_prev)
@@ -573,6 +655,12 @@ def main():
     if tp_rows:
         sb_insert("tour_view_props", tp_rows)
         print(f"  ✅ tour_view_props 저장 ({len(tp_rows)}행)")
+
+    # player_funnel_daily
+    pf_rows = [{**r, "run_id": run_id} for r in player_funnel_rows]
+    if pf_rows:
+        sb_insert("player_funnel_daily", pf_rows)
+        print(f"  ✅ player_funnel_daily 저장 ({len(pf_rows)}행)")
 
     print("=" * 50)
     print(f"✅ 자동 동기화 완료! run_id={run_id}")
