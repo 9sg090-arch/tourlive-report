@@ -1,5 +1,0 @@
-﻿상태,이벤트 명,분류,정의,화면,적용,속성 (properties)
-추가 요청,"EventOn_CompletePurchase ",System,결제 완료 시 수집,,"APP, WEB",City_id /  City_name / Country_name / Price / Tour_id / Tour_name / Product_type / Purchase_type / Package_name / Package_id
-확인 필요,"EventOn_ClickAllPassBanner ",Tour,"1. 상세 > 시트 > allpass 버튼 클릭 시 
-2. allpass상세 > 구매버튼 클릭 시",%EB%AF%B9%EC%8A%A4%ED%8C%A8%EB%84%90%20%EC%9D%B4%EB%B2%A4%ED%8A%B8/clickallpassbanne_img.png,"APP, WEB",City_id / City_name / Price
-확인 필요,EventOn_ClickPurchaseSheet,Tour,투어 상세 > 시트 > 단품 상품 구매 버튼 클릭 시 수집,%EB%AF%B9%EC%8A%A4%ED%8C%A8%EB%84%90%20%EC%9D%B4%EB%B2%A4%ED%8A%B8/EventOn_ClickPurchaseSheet_img.png,"APP, WEB",City_id / City_name / Country_name / Price / Product_name
