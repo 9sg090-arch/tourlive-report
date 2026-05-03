@@ -89,6 +89,28 @@ def mp_funnel(funnel_steps: list[str]) -> dict:
     resp.raise_for_status()
     return resp.json()
 
+def mp_retention(born_event: str, event: str) -> dict:
+    """D0~D30 리텐션 커브 (born_event 발생 코호트가 이후 event 재발생 비율)"""
+    params = {
+        "project_id":     MP_PROJECT_ID,
+        "born_event":     f'{{"event": "{born_event}"}}',
+        "event":          f'{{"event": "{event}"}}',
+        "from_date":      START_DATE,
+        "to_date":        END_DATE,
+        "retention_type": "birth",
+        "interval":       1,
+        "interval_count": 30,
+        "unit":           "day",
+    }
+    resp = requests.get(
+        "https://mixpanel.com/api/2.0/retention",
+        headers=_mp_headers,
+        params=params,
+        timeout=15,
+    )
+    resp.raise_for_status()
+    return resp.json()
+
 # ──────────────────────────────────────────────
 # 2. Radash API 헬퍼
 # ──────────────────────────────────────────────
@@ -138,6 +160,20 @@ def fetch_all() -> dict:
         print(f"  ⚠️  투어 조회 수집 실패: {e}")
         data["tour_views"] = {"dates": [], "values": []}
 
+    # ── Mixpanel: 일별 구매 수
+    print("  [Mixpanel] 구매 데이터 수집…")
+    try:
+        raw_purchase = mp_segmentation(MP_EVENTS["purchase"])
+        series_p = raw_purchase.get("data", {}).get("series", {})
+        dates_p  = sorted(series_p.keys())
+        data["purchases"] = {
+            "dates":  dates_p,
+            "values": [series_p[d] for d in dates_p],
+        }
+    except Exception as e:
+        print(f"  ⚠️  구매 데이터 수집 실패: {e}")
+        data["purchases"] = {"dates": [], "values": []}
+
     # ── Mixpanel: 퍼널 (Session → Tour View → Purchase)
     print("  [Mixpanel] 전환 퍼널 수집…")
     try:
@@ -162,6 +198,45 @@ def fetch_all() -> dict:
             "labels": ["앱/웹 방문", "투어 상세 조회", "예약/결제 완료"],
             "values": [0, 0, 0],
         }
+
+    # ── Mixpanel: 리텐션 커브 (D0~D30)
+    print("  [Mixpanel] 리텐션 커브 수집…")
+    try:
+        raw_ret = mp_retention(MP_EVENTS["session_start"], MP_EVENTS["session_start"])
+        interval_sums = {}
+        total_first = 0
+        for cohort in raw_ret.values():
+            total_first += cohort.get("first", 0)
+            for i, c in enumerate(cohort.get("counts", [])):
+                interval_sums[i] = interval_sums.get(i, 0) + c
+        n = min(31, len(interval_sums))
+        denom = total_first or 1
+        data["retention"] = {
+            "labels": [f"D{i}" for i in range(n)],
+            "values": [round(interval_sums.get(i, 0) / denom * 100, 1) for i in range(n)],
+        }
+    except Exception as e:
+        print(f"  ⚠️  리텐션 수집 실패: {e}")
+        data["retention"] = {"labels": [], "values": []}
+
+    # ── Mixpanel: 이벤트별 유니크 유저 비교
+    print("  [Mixpanel] 이벤트별 유니크 유저 수집…")
+    try:
+        raw_view_u  = mp_segmentation(MP_EVENTS["tour_view"], count_type="unique")
+        raw_purch_u = mp_segmentation(MP_EVENTS["purchase"],  count_type="unique")
+        s_view_u  = raw_view_u.get("data", {}).get("series", {})
+        s_purch_u = raw_purch_u.get("data", {}).get("series", {})
+        data["event_unique_users"] = {
+            "labels": ["세션 시작", "투어 조회", "구매/결제"],
+            "values": [
+                sum(data["dau"]["values"]),
+                sum(s_view_u.values()),
+                sum(s_purch_u.values()),
+            ],
+        }
+    except Exception as e:
+        print(f"  ⚠️  유니크 유저 수집 실패: {e}")
+        data["event_unique_users"] = {"labels": ["세션 시작", "투어 조회", "구매/결제"], "values": [0, 0, 0]}
 
     # ── Radash: 예약/주문 요약
     print("  [Radash] 예약 데이터 수집…")
@@ -225,6 +300,28 @@ def fetch_all() -> dict:
         data["conversion_rate"] = round(funnel_v[-1] / funnel_v[0] * 100, 2)
     else:
         data["conversion_rate"] = 0.0
+
+    # ── 요일별 이벤트 빈도 패턴 (기존 날짜 데이터에서 집계)
+    wd_session  = [0] * 7
+    wd_view     = [0] * 7
+    wd_purchase = [0] * 7
+    for i, d in enumerate(data["dau"]["dates"]):
+        wd = datetime.strptime(d, "%Y-%m-%d").weekday()
+        wd_session[wd] += data["dau"]["values"][i]
+    for i, d in enumerate(data["tour_views"]["dates"]):
+        wd = datetime.strptime(d, "%Y-%m-%d").weekday()
+        wd_view[wd] += data["tour_views"]["values"][i]
+    for i, d in enumerate(data["purchases"]["dates"]):
+        wd = datetime.strptime(d, "%Y-%m-%d").weekday()
+        wd_purchase[wd] += data["purchases"]["values"][i]
+    data["weekday_pattern"] = {
+        "labels": ["월", "화", "수", "목", "금", "토", "일"],
+        "datasets": [
+            {"label": "세션 시작", "data": wd_session,  "color": "#3b82f6"},
+            {"label": "투어 조회", "data": wd_view,     "color": "#10b981"},
+            {"label": "구매/결제", "data": wd_purchase,  "color": "#6366f1"},
+        ],
+    }
 
     data["generated_at"] = NOW.strftime("%Y-%m-%d %H:%M:%S KST")
     data["period"]       = f"{START_DATE} ~ {END_DATE}"
@@ -299,6 +396,8 @@ HTML_TEMPLATE = """\
   .badge.ok   {{ background: #10b98122; color: var(--green); }}
   .badge.crit {{ background: #f43f5e22; color: var(--red); }}
 
+  .section-title {{ font-size: 15px; font-weight: 700; margin-bottom: 16px; margin-top: 8px; }}
+  .charts-row3 {{ display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 20px; }}
   footer {{ text-align: center; color: var(--muted); font-size: 11px; margin-top: 32px; }}
 </style>
 </head>
@@ -377,6 +476,23 @@ HTML_TEMPLATE = """\
       <thead><tr><th>#</th><th>투어명</th><th>예약 수</th><th>매출</th></tr></thead>
       <tbody id="topToursBody"></tbody>
     </table>
+  </div>
+</div>
+
+<!-- 유저 행동 패턴 -->
+<div class="section-title">👣 유저 행동 패턴</div>
+<div class="charts-row3">
+  <div class="chart-card">
+    <h3>📅 리텐션 커브 (D0~D30)</h3>
+    <canvas id="retentionChart"></canvas>
+  </div>
+  <div class="chart-card">
+    <h3>📆 요일별 이벤트 빈도</h3>
+    <canvas id="weekdayChart"></canvas>
+  </div>
+  <div class="chart-card">
+    <h3>👥 이벤트별 유니크 유저</h3>
+    <canvas id="uniqueUsersChart"></canvas>
   </div>
 </div>
 
@@ -499,6 +615,83 @@ const fmt = n => n ? new Intl.NumberFormat('ko-KR').format(n) : '-';
 }});
 if (!D.top_tours || !D.top_tours.length) {{
   tbody.innerHTML = '<tr><td colspan="4" style="color:#94a3b8;text-align:center">데이터 없음</td></tr>';
+}}
+
+// ── 리텐션 커브 ──────────────────────────────────────
+if (D.retention && D.retention.labels.length) {{
+  new Chart(document.getElementById('retentionChart'), {{
+    type: 'line',
+    data: {{
+      labels: D.retention.labels,
+      datasets: [{{
+        label: '리텐션 %',
+        data: D.retention.values,
+        borderColor: '#6366f1',
+        backgroundColor: 'rgba(99,102,241,0.12)',
+        fill: true, tension: 0.4, pointRadius: 2,
+      }}],
+    }},
+    options: {{
+      responsive: true,
+      plugins: {{
+        legend: {{ display: false }},
+        tooltip: {{ callbacks: {{ label: ctx => ctx.raw + '%' }} }},
+      }},
+      scales: {{
+        x: commonScales.x,
+        y: {{ ...commonScales.y, min: 0, max: 100,
+          ticks: {{ ...commonScales.y.ticks, callback: v => v + '%' }} }},
+      }},
+    }},
+  }});
+}} else {{
+  document.getElementById('retentionChart').parentElement.innerHTML +=
+    '<p style="color:#94a3b8;font-size:12px;text-align:center">데이터 없음</p>';
+}}
+
+// ── 요일별 이벤트 빈도 ────────────────────────────────
+if (D.weekday_pattern && D.weekday_pattern.labels.length) {{
+  new Chart(document.getElementById('weekdayChart'), {{
+    type: 'bar',
+    data: {{
+      labels: D.weekday_pattern.labels,
+      datasets: D.weekday_pattern.datasets.map(ds => ({{
+        label: ds.label,
+        data: ds.data,
+        backgroundColor: ds.color + 'bb',
+        borderRadius: 4,
+      }})),
+    }},
+    options: {{
+      responsive: true,
+      plugins: {{ legend: {{ display: true, labels: {{ color: '#94a3b8', font: {{ size: 10 }} }} }} }},
+      scales: commonScales,
+    }},
+  }});
+}}
+
+// ── 이벤트별 유니크 유저 ──────────────────────────────
+if (D.event_unique_users && D.event_unique_users.values.some(v => v > 0)) {{
+  new Chart(document.getElementById('uniqueUsersChart'), {{
+    type: 'bar',
+    data: {{
+      labels: D.event_unique_users.labels,
+      datasets: [{{
+        data: D.event_unique_users.values,
+        backgroundColor: ['#3b82f6', '#10b981', '#6366f1'],
+        borderRadius: 6,
+      }}],
+    }},
+    options: {{
+      indexAxis: 'y',
+      responsive: true,
+      plugins: {{ legend: {{ display: false }} }},
+      scales: commonScales,
+    }},
+  }});
+}} else {{
+  document.getElementById('uniqueUsersChart').parentElement.innerHTML +=
+    '<p style="color:#94a3b8;font-size:12px;text-align:center">데이터 없음</p>';
 }}
 
 // ── 인사이트 체크리스트 ──────────────────────────────────
