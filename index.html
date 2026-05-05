@@ -902,7 +902,7 @@ async function loadHistory() {
     };
     list.appendChild(el);
   });
-  if (runs.length) showOverview(runs);
+  if (runs.length) showOverview(runs).catch(e => console.error('showOverview error:', e));
 }
 
 // ── 초기 개요 화면 ────────────────────────────────────────────────────
@@ -914,9 +914,14 @@ async function showOverview(runs) {
   const recent = runs.slice(0, 7).slice().reverse();
   const ids = recent.map(r => r.id);
 
-  const evts = await sbGet(
-    `event_stats?run_id=in.(${ids.join(',')})&event_name=in.(PageView_Tour,EventOn_CompletePurchase)`
-  );
+  let evts = [];
+  try {
+    evts = await sbGet(
+      `event_stats?run_id=in.(${ids.join(',')})&event_name=in.(PageView_Tour,EventOn_CompletePurchase)&select=run_id,event_name,count`
+    );
+  } catch(e) {
+    console.error('event_stats 조회 실패:', e);
+  }
 
   const tourMap = {}, purchaseMap = {};
   evts.forEach(e => {
