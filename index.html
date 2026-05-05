@@ -887,7 +887,7 @@ async function loadHistory() {
     ].join('');
     const timeStr = new Date(r.created_at).toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'});
     const el = document.createElement('div');
-    el.className = 'run-item' + (isAuto ? ' auto' : '') + (i===0 ? ' active' : '');
+    el.className = 'run-item' + (isAuto ? ' auto' : '');
     el.dataset.id = r.id;
     el.innerHTML = `
       <div class="run-date">${r.date_from}${r.date_to && r.date_to!==r.date_from ? ` ~ ${r.date_to}` : ''} <span style="color:var(--muted2);font-weight:400;font-size:10px;">${timeStr}</span></div>
@@ -902,7 +902,72 @@ async function loadHistory() {
     };
     list.appendChild(el);
   });
-  if (runs.length) loadRun(runs[0].id, runs[0]);
+  if (runs.length) showOverview(runs);
+}
+
+// ── 초기 개요 화면 ────────────────────────────────────────────────────
+async function showOverview(runs) {
+  document.getElementById('empty-state').style.display = 'none';
+  document.getElementById('content').style.display = 'none';
+  clearCharts();
+
+  const recent = runs.slice(0, 7).slice().reverse();
+  const ids = recent.map(r => r.id);
+
+  const evts = await sbGet(
+    `event_stats?run_id=in.(${ids.join(',')})&event_name=in.(PageView_Tour,EventOn_CompletePurchase)`
+  );
+
+  const tourMap = {}, purchaseMap = {};
+  evts.forEach(e => {
+    if (e.event_name === 'PageView_Tour') tourMap[e.run_id] = e.count;
+    if (e.event_name === 'EventOn_CompletePurchase') purchaseMap[e.run_id] = e.count;
+  });
+
+  const labels   = recent.map(r => r.date_from);
+  const dauData  = recent.map(r => r.real_dau || 0);
+  const convData = recent.map(r => {
+    const t = tourMap[r.id] || 0;
+    const p = purchaseMap[r.id] || 0;
+    return t ? parseFloat((p / t * 100).toFixed(1)) : 0;
+  });
+
+  const gc = 'rgba(255,255,255,0.06)';
+  const sc = {x:{ticks:{color:'#94a3b8',font:{size:10}},grid:{color:gc}},y:{ticks:{color:'#94a3b8',font:{size:10}},grid:{color:gc}}};
+
+  document.getElementById('content').innerHTML = `
+    <div class="page-header">
+      <h1>📈 최근 ${recent.length}건 트렌드</h1>
+      <div class="subtitle">DAU와 구매 전환율 추이</div>
+    </div>
+    <div class="row2">
+      <div class="chart-card"><h3>👥 DAU 추이</h3><canvas id="oDAU"></canvas></div>
+      <div class="chart-card"><h3>🛒 구매 전환율 추이</h3><canvas id="oCR"></canvas></div>
+    </div>
+  `;
+  document.getElementById('content').style.display = 'block';
+
+  charts.push(new Chart(document.getElementById('oDAU'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{label:'DAU', data: dauData, backgroundColor:'rgba(59,130,246,0.7)', borderRadius:4}]
+    },
+    options: {responsive:true, plugins:{legend:{display:false}}, scales:sc}
+  }));
+
+  charts.push(new Chart(document.getElementById('oCR'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{label:'전환율(%)', data: convData, backgroundColor:'rgba(16,185,129,0.7)', borderRadius:4}]
+    },
+    options: {
+      responsive:true,
+      plugins:{legend:{display:false}},
+      scales:{...sc, y:{...sc.y, ticks:{...sc.y.ticks, callback: v => v+'%'}}}
+    }
+  }));
 }
 
 // ── 차트 관리 ─────────────────────────────────────────────────────────
